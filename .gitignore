@@ -53,5 +53,6 @@ db/
 venv/
 *_log
 old_logs/
-super_node_inference_layer.sqlite*
 .python-version
+pathfinding_visualization.mp4
+pathfinding_visualization.gif
