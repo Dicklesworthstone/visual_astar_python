@@ -20,6 +20,8 @@ from skimage.morphology import thin, disk
 from numpy.fft import fft2, ifft2
 from tqdm import tqdm
 from PIL import Image
+import asyncio
+from asyncio import to_thread
 
 # Add this line to switch to a non-interactive backend
 plt.switch_backend("Agg")
@@ -1007,7 +1009,11 @@ def delete_small_files(folder, size_limit_kb=25):
                 )
 
 
-def run_complex_examples(
+async def save_animation_async(anim, filepath, writer, DPI):
+    await to_thread(anim.save, filepath, writer=writer, dpi=DPI)
+
+
+async def run_complex_examples(
     num_animations=1,
     GRID_SIZE=31,
     num_problems=1,
@@ -1044,7 +1050,6 @@ def run_complex_examples(
         "reaction_diffusion",
     ]
 
-    # Create a subfolder for the animations
     output_folder = "maze_animations"
     os.makedirs(output_folder, exist_ok=True)
 
@@ -1202,7 +1207,6 @@ def run_complex_examples(
 
         max_frames = max(1, max_frames)
 
-        # Parallelize frame generation
         num_cores = multiprocessing.cpu_count()
         print(f"Using {num_cores} cores for frame generation")
 
@@ -1234,7 +1238,6 @@ def run_complex_examples(
             )
 
         if num_problems == 1:
-            # If there's only one problem, axs is not a list
             anim = FuncAnimation(
                 fig,
                 lambda f: axs.imshow(frames[f]),
@@ -1269,7 +1272,6 @@ def run_complex_examples(
 
         writer = FFMpegWriter(fps=FPS, codec="libx265", extra_args=ffmpeg_params)
 
-        # Generate filename based on maze approach and current datetime
         now = datetime.now()
         date_time = now.strftime("%Y%m%d_%H%M%S")
         maze_approach = all_maze_approaches[0] if all_maze_approaches else "unknown"
@@ -1279,26 +1281,25 @@ def run_complex_examples(
         print(
             f"Saving MP4 using {num_cores} cores for encoding with optimized settings..."
         )
-        anim.save(filepath, writer=writer, dpi=DPI)
+        await save_animation_async(anim, filepath, writer, DPI)
         print(f"Animation saved as '{filepath}'")
         delete_small_files(output_folder)
         plt.close(fig)
 
-        # Optionally save as GIF
         use_save_as_gif = False
         if use_save_as_gif:
             gif_filename = f"{maze_approach}_{date_time}.gif"
             gif_filepath = os.path.join(output_folder, gif_filename)
             writer2 = PillowWriter(fps=10)
             print("Saving GIF...")
-            anim.save(gif_filepath, writer=writer2, dpi=DPI)
+            await save_animation_async(anim, gif_filepath, writer2, DPI)
             print(f"Animation saved as '{gif_filepath}'")
 
 
 if __name__ == "__main__":
-    num_animations = 3  # Set this to the desired number of animations
-    GRID_SIZE = 91  # Resolution of the maze grid
-    num_problems = 2  # Number of mazes to show side by side in each animation
-    DPI = 150  # DPI for the animation
-    FPS = 60  # FPS for the animation
-    run_complex_examples(num_animations, GRID_SIZE, num_problems, DPI, FPS)
+    num_animations = 10
+    GRID_SIZE = 91
+    num_problems = 2
+    DPI = 150
+    FPS = 60
+    asyncio.run(run_complex_examples(num_animations, GRID_SIZE, num_problems, DPI, FPS))
