@@ -1100,8 +1100,12 @@ def check_amf_support():
 
 
 def get_ffmpeg_params(num_cores):
+    params = None
+
     if check_cuda_support():
-        print("CUDA support detected, using hevc_nvenc for hardware encoding.")
+        print(
+            "CUDA support detected, attempting to use hevc_nvenc for hardware encoding."
+        )
         params = [
             "-threads",
             str(num_cores),
@@ -1119,7 +1123,7 @@ def get_ffmpeg_params(num_cores):
             "+faststart",
         ]
     elif check_qsv_support():
-        print("QSV support detected, using hevc_qsv for hardware encoding.")
+        print("QSV support detected, attempting to use hevc_qsv for hardware encoding.")
         params = [
             "-threads",
             str(num_cores),
@@ -1133,7 +1137,7 @@ def get_ffmpeg_params(num_cores):
             "+faststart",
         ]
     elif check_amf_support():
-        print("AMF support detected, using hevc_amf for hardware encoding.")
+        print("AMF support detected, attempting to use hevc_amf for hardware encoding.")
         params = [
             "-threads",
             str(num_cores),
@@ -1148,30 +1152,63 @@ def get_ffmpeg_params(num_cores):
             "-movflags",
             "+faststart",
         ]
-    else:
-        print(
-            "No hardware acceleration support detected, using libx265 for software encoding."
-        )
-        params = [
-            "-threads",
-            str(num_cores),
-            "-c:v",
-            "libx265",
-            "-preset",
-            "veryslow",
-            "-crf",
-            "18",
-            "-x265-params",
-            (
-                f"numa-pools=48:frame-threads={num_cores}:pmode=1:pme=1:"
-                "rc-lookahead=60:bframes=8:b-adapt=2:ctu=64:ref=6:"
-                "scenecut=40:min-keyint=1:keyint=250:"
-                "aq-mode=3:psy-rd=2.0:psy-rdoq=1.0:"
-                "open-gop=1:me=4:subme=7"
-            ),
-            "-movflags",
-            "+faststart",
-        ]
+
+    # Check if selected hardware parameters are valid
+    if params:
+        try:
+            test_command = [
+                "ffmpeg",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=black:s=2x2:d=1",
+                "-frames:v",
+                "1",
+                "-f",
+                "null",
+                "-",
+            ] + params
+            subprocess.run(
+                test_command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=True,
+            )
+            return params
+        except subprocess.CalledProcessError as e:
+            print(
+                f"Hardware encoding setup failed: {e}. Falling back to software encoding."
+            )
+        except Exception as e:
+            print(
+                f"Unexpected error during hardware encoding setup: {e}. Falling back to software encoding."
+            )
+
+    # Fallback to software encoding
+    print(
+        "No suitable hardware acceleration detected, using libx265 for software encoding."
+    )
+    return [
+        "-threads",
+        str(num_cores),
+        "-c:v",
+        "libx265",
+        "-preset",
+        "veryslow",
+        "-crf",
+        "18",
+        "-x265-params",
+        (
+            f"numa-pools=48:frame-threads={num_cores}:pmode=1:pme=1:"
+            "rc-lookahead=60:bframes=8:b-adapt=2:ctu=64:ref=6:"
+            "scenecut=40:min-keyint=1:keyint=250:"
+            "aq-mode=3:psy-rd=2.0:psy-rdoq=1.0:"
+            "open-gop=1:me=4:subme=7"
+        ),
+        "-movflags",
+        "+faststart",
+    ]
 
     # Check if the hardware encoding params are valid by running a dummy command
     try:
