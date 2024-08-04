@@ -864,18 +864,14 @@ def maze_hole_puncher(maze, start, goal):
     x1, y1 = start
     x2, y2 = goal
 
-    # Determine the direction of the line to draw
-    dx = 1 if x2 > x1 else -1
-    dy = 1 if y2 > y1 else -1
-
     # Draw a straight line from start to goal, ensuring a path exists
     x, y = x1, y1
-    while x != x2 or y != y2:
+    while (x, y) != (x2, y2):
         maze[y, x] = 0
         if x != x2:
-            x += dx
+            x += 1 if x2 > x else -1
         if y != y2:
-            y += dy
+            y += 1 if y2 > y else -1
     maze[y, x] = 0  # Ensure the goal is also marked as open
 
 
