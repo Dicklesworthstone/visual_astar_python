@@ -1288,31 +1288,42 @@ def bresenham_line(x0, y0, x1, y1):
     return line_points
 
 
-@nb.jit(nopython=True)
+def line(y0, x0, y1, x1):
+    """Generate line pixels using Bresenham's line algorithm"""
+    dx = abs(x1 - x0)
+    dy = abs(y1 - y0)
+    sx = 1 if x0 < x1 else -1
+    sy = 1 if y0 < y1 else -1
+    err = dx - dy
+
+    x, y = x0, y0
+    points_x, points_y = [], []
+
+    while True:
+        points_x.append(x)
+        points_y.append(y)
+        if x == x1 and y == y1:
+            break
+        e2 = 2 * err
+        if e2 > -dy:
+            err -= dy
+            x += sx
+        if e2 < dx:
+            err += dx
+            y += sy
+
+    return np.array(points_y), np.array(points_x)
+
+
 def draw_lines(maze, vertices, ridge_vertices):
     for simplex in ridge_vertices:
         if simplex[0] != -1 and simplex[1] != -1:
             p1, p2 = vertices[simplex[0]], vertices[simplex[1]]
             x1, y1 = int(p1[1]), int(p1[0])
             x2, y2 = int(p2[1]), int(p2[0])
-            dx = abs(x2 - x1)
-            dy = abs(y2 - y1)
-            sx = 1 if x1 < x2 else -1
-            sy = 1 if y1 < y2 else -1
-            err = dx - dy
-
-            while True:
-                if 0 <= y1 < maze.shape[0] and 0 <= x1 < maze.shape[1]:
-                    maze[y1, x1] = 0
-                if x1 == x2 and y1 == y2:
-                    break
-                e2 = 2 * err
-                if e2 > -dy:
-                    err -= dy
-                    x1 += sx
-                if e2 < dx:
-                    err += dx
-                    y1 += sy
+            rr, cc = line(y1, x1, y2, x2)
+            valid = (rr >= 0) & (rr < maze.shape[0]) & (cc >= 0) & (cc < maze.shape[1])
+            maze[rr[valid], cc[valid]] = 0
     return maze
 
 
