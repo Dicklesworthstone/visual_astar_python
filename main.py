@@ -22,7 +22,7 @@ from tqdm import tqdm
 from PIL import Image
 
 # Add this line to switch to a non-interactive backend
-plt.switch_backend('Agg')
+plt.switch_backend("Agg")
 
 # Constants for integer coordinate encoding
 BITS_PER_COORDINATE = int(math.floor(math.log2((1 << 63) - 1) / 2))
@@ -994,14 +994,17 @@ def generate_frame(
 
 
 def delete_small_files(folder, size_limit_kb=25):
+    one_hour_ago = time.time() - 3600
     for filename in os.listdir(folder):
         filepath = os.path.join(folder, filename)
-        if (
-            os.path.isfile(filepath)
-            and os.path.getsize(filepath) < size_limit_kb * 1024
-        ):
-            os.remove(filepath)
-            print(f"Deleted {filename} because it is smaller than {size_limit_kb}KB.")
+        if os.path.isfile(filepath):
+            file_size = os.path.getsize(filepath)
+            last_modified_time = os.path.getmtime(filepath)
+            if file_size < size_limit_kb * 1024 and last_modified_time < one_hour_ago:
+                os.remove(filepath)
+                print(
+                    f"Deleted {filename} because it is smaller than {size_limit_kb}KB and was last modified over an hour ago."
+                )
 
 
 def run_complex_examples(
