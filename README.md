@@ -178,7 +178,7 @@ For instance, in a video game, A\* can guide characters through complex environm
 
 In summary, A\* is not just a pathfinder—it's a path optimizer. By considering both the path traveled and the estimated journey ahead, it excels at finding the shortest and most efficient route in complex environments. This dual focus on the present situation and future possibilities makes A\* a preferred choice for many real-world applications where efficiency and precision are crucial.
 
-### Why This Implementation Shines
+### A\* Implementation Details
 
 The implementation of A\* in this project goes beyond the basics, making it not only effective but also exceptionally efficient. It is heavily based on the lisp implementation given [here](https://gitlab.com/lockie/cl-astar) by Andrew Kravchuk. Here are some of the features of this implementation:
 
