@@ -2,6 +2,8 @@ import math
 import random
 import time
 import os
+import asyncio
+from asyncio import to_thread
 from datetime import datetime
 import multiprocessing
 import concurrent.futures
@@ -20,11 +22,45 @@ from skimage.morphology import thin, disk
 from numpy.fft import fft2, ifft2
 from tqdm import tqdm
 from PIL import Image
-import asyncio
-from asyncio import to_thread
+import requests
+from matplotlib import font_manager
 
 # Add this line to switch to a non-interactive backend
 plt.switch_backend("Agg")
+
+# Define the URL for the Montserrat font (Regular weight)
+font_url = 'https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-Regular.ttf'
+font_filename = 'Montserrat-Regular.ttf'
+font_path = os.path.join('fonts', font_filename)
+
+# Create a fonts directory if it doesn't exist
+os.makedirs('fonts', exist_ok=True)
+
+# Function to download the font
+def download_font(url, path):
+    response = requests.get(url)
+    response.raise_for_status()  # Raise an exception for HTTP errors
+    with open(path, 'wb') as f:
+        f.write(response.content)
+
+# Download the font if it doesn't exist locally or is corrupted
+try:
+    if not os.path.isfile(font_path) or os.path.getsize(font_path) == 0:
+        print("Downloading Montserrat font...")
+        download_font(font_url, font_path)
+        print("Font downloaded.")
+except requests.exceptions.RequestException as e:
+    print(f"Error downloading the font: {e}")
+    raise
+
+# Verify that the font is a valid TrueType font
+try:
+    font_manager.fontManager.addfont(font_path)
+    plt.rcParams['font.family'] = 'Montserrat'
+    print("Font loaded and set.")
+except RuntimeError as e:
+    print(f"Error loading font: {e}")
+    raise
 
 # Constants for integer coordinate encoding
 BITS_PER_COORDINATE = int(math.floor(math.log2((1 << 63) - 1) / 2))
@@ -862,7 +898,7 @@ def create_better_maze(width, height, maze_generation_approach):
 def maze_hole_puncher(maze, start, goal):
     """Attempt to make the maze solvable by randomly removing walls."""
     max_attempts = 1000
-    max_removals = 5
+    max_starting_removals = 50
     attempt = 0
 
     def is_within_bounds(x, y):
@@ -877,7 +913,7 @@ def maze_hole_puncher(maze, start, goal):
         attempt += 1
 
         # Select random wall cells to remove
-        wall_positions = get_random_wall_positions(maze, max_removals)
+        wall_positions = get_random_wall_positions(maze, max_starting_removals + attempt)
 
         # Temporarily remove selected walls
         removed_cells = []
@@ -1068,6 +1104,8 @@ async def run_complex_examples(
     num_problems=1,
     DPI=50,
     FPS=60,
+    save_as_frames=False,
+    frame_format="png",
     override_maze_approach=None,
 ):
     wall_color = "#2C3E50"
@@ -1286,69 +1324,82 @@ async def run_complex_examples(
                 )
             )
 
-        if num_problems == 1:
-            anim = FuncAnimation(
-                fig,
-                lambda f: axs.imshow(frames[f]),
-                frames=max_frames,
-                interval=100,
-                blit=False,
+        if save_as_frames:
+            date_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+            animation_folder = os.path.join(
+                output_folder, f"animation_{animation_index + 1}__{date_time}"
+            )
+            os.makedirs(animation_folder, exist_ok=True)
+            for frame_index, frame in enumerate(frames):
+                image = Image.fromarray(frame)
+                image.save(
+                    os.path.join(
+                        animation_folder, f"frame_{frame_index:04d}.{frame_format}"
+                    )
+                )
+            print(
+                f"Frames saved as '{frame_format}' format in folder '{animation_folder}'"
             )
         else:
-            anim = FuncAnimation(
-                fig,
-                lambda f: [axs[i].imshow(frames[f]) for i in range(num_problems)],
-                frames=max_frames,
-                interval=100,
-                blit=False,
+            if num_problems == 1:
+                anim = FuncAnimation(
+                    fig,
+                    lambda f: axs.imshow(frames[f]),
+                    frames=max_frames,
+                    interval=100,
+                    blit=False,
+                )
+            else:
+                anim = FuncAnimation(
+                    fig,
+                    lambda f: [axs[i].imshow(frames[f]) for i in range(num_problems)],
+                    frames=max_frames,
+                    interval=100,
+                    blit=False,
+                )
+
+            ffmpeg_params = [
+                "-threads",
+                str(num_cores),
+                "-c:v",
+                "libx265",
+                "-preset",
+                "medium",
+                "-crf",
+                "25",
+                "-x265-params",
+                "frame-threads=5:numa-pools=36:wpp=1:pmode=1:pme=1:bframes=8:b-adapt=2:rc-lookahead=60",
+                "-movflags",
+                "+faststart",
+            ]
+            print(f"Selected FFmpeg parameters: {ffmpeg_params}")
+
+            writer = FFMpegWriter(fps=FPS, codec="libx265", extra_args=ffmpeg_params)
+
+            now = datetime.now()
+            date_time = now.strftime("%Y%m%d_%H%M%S")
+            maze_approach = all_maze_approaches[0] if all_maze_approaches else "unknown"
+            filename = f"{maze_approach}_{date_time}.mp4"
+            filepath = os.path.join(output_folder, filename)
+
+            print(
+                f"Saving MP4 using {num_cores} cores for encoding with optimized settings..."
             )
-
-        ffmpeg_params = [
-            "-threads",
-            str(num_cores),
-            "-c:v",
-            "libx265",
-            "-preset",
-            "medium",
-            "-crf",
-            "25",
-            "-x265-params",
-            "frame-threads=5:numa-pools=36:wpp=1:pmode=1:pme=1:bframes=8:b-adapt=2:rc-lookahead=60",
-            "-movflags",
-            "+faststart",
-        ]
-        print(f"Selected FFmpeg parameters: {ffmpeg_params}")
-
-        writer = FFMpegWriter(fps=FPS, codec="libx265", extra_args=ffmpeg_params)
-
-        now = datetime.now()
-        date_time = now.strftime("%Y%m%d_%H%M%S")
-        maze_approach = all_maze_approaches[0] if all_maze_approaches else "unknown"
-        filename = f"{maze_approach}_{date_time}.mp4"
-        filepath = os.path.join(output_folder, filename)
-
-        print(
-            f"Saving MP4 using {num_cores} cores for encoding with optimized settings..."
-        )
-        await save_animation_async(anim, filepath, writer, DPI)
-        print(f"Animation saved as '{filepath}'")
-        delete_small_files(output_folder)
-        plt.close(fig)
-
-        use_save_as_gif = False
-        if use_save_as_gif:
-            gif_filename = f"{maze_approach}_{date_time}.gif"
-            gif_filepath = os.path.join(output_folder, gif_filename)
-            writer2 = PillowWriter(fps=10)
-            print("Saving GIF...")
-            await save_animation_async(anim, gif_filepath, writer2, DPI)
-            print(f"Animation saved as '{gif_filepath}'")
+            await save_animation_async(anim, filepath, writer, DPI)
+            print(f"Animation saved as '{filepath}'")
+            delete_small_files(output_folder)
+            plt.close(fig)
 
 
 if __name__ == "__main__":
-    num_animations = 1  # Set this to the desired number of animations
-    GRID_SIZE = 91  # Resolution of the maze grid
+    num_animations = 1  # Set this to the desired number of animations to generate
+    GRID_SIZE = 151  # Resolution of the maze grid
     num_problems = 2  # Number of mazes to show side by side in each animation
-    DPI = 150  # DPI for the animation
+    DPI = 200  # DPI for the animation
     FPS = 60  # FPS for the animation
-    asyncio.run(run_complex_examples(num_animations, GRID_SIZE, num_problems, DPI, FPS))
+    save_as_frames = 1  # Set this to 1 to save frames as individual images in a generated sub-folder; 0 to save as a single video
+    asyncio.run(
+        run_complex_examples(
+            num_animations, GRID_SIZE, num_problems, DPI, FPS, save_as_frames
+        )
+    )

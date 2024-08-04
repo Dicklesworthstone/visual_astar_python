@@ -65,6 +65,22 @@ This project includes a rich variety of maze generation algorithms, each creatin
 
 Each method in this collection offers a distinct visual and structural style, making it possible to explore a wide range of maze characteristics and challenges. These mazes are suitable for testing various pathfinding algorithms and for generating visually compelling visualizations.
 
+### Ensuring Solvability with the Maze Hole Puncher
+
+While the diverse maze generation techniques create visually and structurally unique mazes, they do not always guarantee that the resulting maze will be solvable—i.e., there might not be a path from the start to the goal. To address this issue, the project includes a `maze_hole_puncher` function, a utility designed to ensure maze solvability by modifying the maze as a last resort.
+
+**Why It's Needed**: Certain complex generation algorithms can inadvertently produce mazes with disconnected areas or enclosed regions, making it impossible for a pathfinding algorithm to find a route from the start to the goal. The `maze_hole_puncher` function acts as a corrective measure, modifying the maze to create a valid path if none exists.
+
+**How It Works**: The function iteratively removes wall cells in a controlled manner, attempting to connect previously isolated sections of the maze. It starts by randomly selecting wall cells and removes them, checking after each modification whether a path has become possible. The function continues this process up to a predefined limit, ensuring that a solution is found without overly simplifying the maze.
+
+**Implementation Details**:
+
+- **Bounded Operations**: The function limits the number of modifications it can make, balancing between ensuring solvability and preserving the maze's original complexity.
+- **Random Selection**: It randomly chooses wall cells for removal, maintaining the randomness inherent to the maze generation process.
+- **Validation Check**: After each removal, the function checks if a path exists from the start to the goal using the pathfinding algorithm. If a path is found, the process stops, ensuring minimal changes to the maze structure.
+
+The `maze_hole_puncher` provides a fallback mechanism to guarantee that the generated mazes are not only aesthetically and structurally diverse but also functionally navigable. This function ensures that the visualization and pathfinding algorithms have meaningful tasks, making it possible to demonstrate and explore the capabilities of advanced pathfinding strategies across all types of generated mazes.
+
 ## Visualization
 
 The visualization component in this project is designed to provide a comprehensive and interactive display of both the maze generation process and the pathfinding algorithms at work. This component uses the `matplotlib` library to create detailed visual representations that highlight the complexities and intricacies of maze structures and pathfinding strategies. Key elements of the visualization include:
@@ -90,16 +106,53 @@ The visualization component in this project is designed to provide a comprehensi
 - **Colormap Selection**: For the exploration and path colors, users can select from predefined colormaps or create custom ones using `LinearSegmentedColormap`. This flexibility ensures that the visualization can be adapted to various aesthetic preferences or accessibility needs.
 
 - **Transparency and Layering**: The visualization supports transparency and layering effects, particularly for the exploration map. By adjusting the alpha value, users can overlay the exploration progress on top of the maze structure without obscuring the underlying details. This feature is useful for simultaneously visualizing the explored area and the structural layout of the maze.
-
+- 
 ### Animation and Export
 
 - **Frame Generation**: The visualization is animated by generating frames that capture the state of the maze and pathfinding process at each time step. The code uses concurrent processing to efficiently generate these frames, leveraging multiple CPU cores for faster rendering. Each frame is created by plotting the maze, exploration progress, and current path status.
 
-- **Animation Playback**: The frames are compiled into an animation using `FuncAnimation` from `matplotlib.animation`. The playback speed can be adjusted by setting the frames per second (FPS), allowing for slower or faster visualization of the pathfinding process. The animation provides a smooth and continuous representation of the algorithm's operation, from initial exploration to final pathfinding.
+- **Animation Playback**: The frames can be compiled into an animation using `FuncAnimation` from `matplotlib.animation`. The playback speed can be adjusted by setting the frames per second (FPS), allowing for slower or faster visualization of the pathfinding process. The animation provides a smooth and continuous representation of the algorithm's operation, from initial exploration to final pathfinding.
 
-- **Output Formats**: The animations can be exported in various formats, including MP4 and GIF. For MP4 exports, the `FFMpegWriter` is used, allowing for fine-tuned control over encoding parameters, such as bitrate and codec settings. This ensures high-quality video output suitable for presentations or further analysis. The GIF export option provides a more lightweight and easily shareable format, though it may require adjustments to frame rate and resolution for optimal quality.
+- **Output Formats**: The frames can be saved individually as images or compiled into a video. If `save_as_frames` is set to `True`, each frame is saved as an individual image in the specified `frame_format` (e.g., PNG, JPG). This option is useful for creating high-quality image sequences or for detailed post-processing of individual frames. Alternatively, if `save_as_frames` is set to `False`, the frames are compiled into an animation in formats such as MP4. For MP4 exports, the `FFMpegWriter` is used, allowing for fine-tuned control over encoding parameters, such as bitrate and codec settings. This ensures high-quality video output suitable for presentations or further analysis.
 
-- **Resource Management**: To manage disk space and avoid clutter, the code includes functionality to delete small or temporary files after the animation is saved. This helps maintain a clean working directory and ensures that only the most relevant files are retained.
+- **Resource Management**: To manage disk space and avoid clutter, the code includes functionality to delete small or temporary files after the animation or frame sequence is saved. This helps maintain a clean working directory and ensures that only the most relevant files are retained. This feature is particularly useful when saving individual frames, as it can help prevent the accumulation of numerous image files.
+
+### Assembling Frames into an MP4 File Using FFmpeg
+
+If you have saved the frames as individual image files and wish to manually assemble them into an MP4 video, you can use FFmpeg, a powerful multimedia processing tool. Below are the steps and recommended settings to create a high-quality MP4 file from a sequence of frames.
+
+#### Prerequisites
+
+Ensure FFmpeg is installed on your system. You can download it from the [official FFmpeg website](https://ffmpeg.org/download.html) or install it via a package manager.
+
+#### Command Example
+
+Assuming your frames are named sequentially (e.g., `frame_0001.png`, `frame_0002.png`, etc.) and stored in a folder called `output_frames`, you can use the following command:
+
+```bash
+ffmpeg -framerate 60 -i output_frames/frame_%04d.png -c:v libx264 -crf 23 -preset medium -pix_fmt yuv420p output_video.mp4
+```
+
+#### Explanation of Options
+
+- **`-framerate 60`**: Sets the frame rate of the output video to 60 frames per second. Adjust this value to match the desired playback speed.
+- **`-i output_frames/frame_%04d.png`**: Specifies the input file pattern. `%04d` expects four digits in the filenames, ensuring that FFmpeg processes files in the correct order.
+- **`-c:v libx264`**: Specifies the video codec to use. `libx264` is a widely-used codec for producing high-quality MP4 videos.
+- **`-crf 23`**: Sets the Constant Rate Factor, which controls the video quality. Lower values result in higher quality and larger file sizes. A value of 23 provides a good balance between quality and file size. You can lower it to 18 for nearly lossless quality or raise it to 28 for lower quality.
+- **`-preset medium`**: Controls the speed of the compression. `medium` is a good balance between compression speed and output file size. You can use `ultrafast` for quicker processing or `veryslow` for smaller file sizes with better compression.
+- **`-pix_fmt yuv420p`**: Ensures compatibility with most players by using the YUV 4:2:0 pixel format.
+
+#### Additional Tips
+
+1. **Adjusting Frame Rate**: You can change the frame rate (`-framerate`) to suit your needs. For smoother animations, use a higher frame rate; for slower motion, use a lower frame rate.
+
+2. **Fine-tuning Quality**: Experiment with the `-crf` and `-preset` options to find the best balance between quality and file size for your specific use case.
+
+3. **Audio Track**: If you have an audio track to include, you can add it with the `-i audio_file.mp3` option and map it to the output with `-map 0:v -map 1:a`.
+
+4. **Output Filename**: The `output_video.mp4` at the end of the command specifies the name of the generated video file. You can change it to whatever suits your project.
+
+Using these settings, you can create a high-quality MP4 video from the saved frame images, suitable for presentations, sharing, or further analysis.
 
 ## Usage
 
@@ -141,6 +194,9 @@ This project includes several parameters that users can configure to customize t
 - **num_problems**: Sets the number of mazes displayed side by side in each animation. This allows for simultaneous comparison of different maze generation methods or pathfinding strategies.
 - **DPI**: Determines the dots per inch (DPI) for the animation, affecting the resolution and quality of the output. Higher DPI values produce sharper images but may increase rendering time.
 - **FPS**: Controls the frames per second (FPS) for the animation playback. A higher FPS results in smoother animations but may require more processing power and storage.
+- **save_as_frames**: A boolean parameter indicating whether to save each frame of the animation as a separate image file. Setting this to `True` saves the frames as individual images, while `False` compiles them into a video.
+- **frame_format**: Specifies the format in which frames are saved if `save_as_frames` is enabled. Common formats include 'png' and 'jpg'.
+- **override_maze_approach**: Allows the user to specify a particular maze generation approach to use for all animations. If set, this parameter overrides the random selection of maze generation methods, ensuring consistency across all animations.
 
 These parameters provide users with extensive control over the behavior and appearance of the generated mazes and visualizations, allowing for fine-tuning according to specific requirements or preferences.
 

@@ -6,3 +6,4 @@ scipy
 ffmpeg
 ruff
 noise
+requests
