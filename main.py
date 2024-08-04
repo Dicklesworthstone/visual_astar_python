@@ -1051,29 +1051,6 @@ def check_cuda_support():
         print(f"Error checking CUDA support: {e}")
         return False
 
-
-def check_qsv_support():
-    try:
-        hwaccel_result = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-hwaccels"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        if "qsv" not in hwaccel_result.stdout.lower():
-            return False
-
-        encoders_result = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-encoders"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        return "hevc_qsv" in encoders_result.stdout.lower()
-    except Exception:
-        return False
-
-
 def check_amf_support():
     try:
         hwaccel_result = subprocess.run(
@@ -1113,28 +1090,8 @@ def get_ffmpeg_params(num_cores):
             "hevc_nvenc",
             "-preset",
             "p7",
-            "-profile:v",
-            "main",
-            "-level:v",
-            "4.1",
             "-b:v",
             "5M",
-            "-movflags",
-            "+faststart",
-        ]
-    elif check_qsv_support():
-        print("QSV support detected, attempting to use hevc_qsv for hardware encoding.")
-        params = [
-            "-threads",
-            str(num_cores),
-            "-c:v",
-            "hevc_qsv",
-            "-global_quality",
-            "25",
-            "-preset:v",
-            "veryslow",
-            "-movflags",
-            "+faststart",
         ]
     elif check_amf_support():
         print("AMF support detected, attempting to use hevc_amf for hardware encoding.")
@@ -1145,12 +1102,8 @@ def get_ffmpeg_params(num_cores):
             "hevc_amf",
             "-quality",
             "quality",
-            "-usage",
-            "transcoding",
             "-b:v",
             "5M",
-            "-movflags",
-            "+faststart",
         ]
 
     # Check if selected hardware parameters are valid
@@ -1168,90 +1121,34 @@ def get_ffmpeg_params(num_cores):
                 "null",
                 "-",
             ] + params
-            subprocess.run(
-                test_command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                check=True,
+            result = subprocess.run(
+                test_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
             )
-            return params
-        except subprocess.CalledProcessError as e:
-            print(
-                f"Hardware encoding setup failed: {e}. Falling back to software encoding."
-            )
+            if result.returncode == 0:
+                return params
+            else:
+                print(
+                    f"Hardware encoding test failed with return code {result.returncode}."
+                )
         except Exception as e:
-            print(
-                f"Unexpected error during hardware encoding setup: {e}. Falling back to software encoding."
-            )
+            print(f"Hardware encoding setup failed: {e}")
 
     # Fallback to software encoding
-    print(
-        "No suitable hardware acceleration detected, using libx265 for software encoding."
-    )
+    print("Falling back to software encoding using libx265.")
     return [
         "-threads",
         str(num_cores),
         "-c:v",
         "libx265",
         "-preset",
-        "veryslow",
+        "medium",
         "-crf",
-        "18",
+        "23",
         "-x265-params",
-        (
-            f"numa-pools=48:frame-threads={num_cores}:pmode=1:pme=1:"
-            "rc-lookahead=60:bframes=8:b-adapt=2:ctu=64:ref=6:"
-            "scenecut=40:min-keyint=1:keyint=250:"
-            "aq-mode=3:psy-rd=2.0:psy-rdoq=1.0:"
-            "open-gop=1:me=4:subme=7"
-        ),
+        f"frame-threads={num_cores}:pools=none",
         "-movflags",
         "+faststart",
     ]
-
-    # Check if the hardware encoding params are valid by running a dummy command
-    try:
-        test_command = [
-            "ffmpeg",
-            "-f",
-            "lavfi",
-            "-i",
-            "color=c=black:s=2x2:d=1",
-            "-frames:v",
-            "1",
-            "-f",
-            "null",
-            "-",
-        ] + params
-        subprocess.run(
-            test_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-        )
-        return params
-    except Exception as e:
-        print(
-            f"Error with selected FFmpeg parameters: {e}. Falling back to software encoding."
-        )
-        return [
-            "-threads",
-            str(num_cores),
-            "-c:v",
-            "libx265",
-            "-preset",
-            "veryslow",
-            "-crf",
-            "18",
-            "-x265-params",
-            (
-                f"numa-pools=48:frame-threads={num_cores}:pmode=1:pme=1:"
-                "rc-lookahead=60:bframes=8:b-adapt=2:ctu=64:ref=6:"
-                "scenecut=40:min-keyint=1:keyint=250:"
-                "aq-mode=3:psy-rd=2.0:psy-rdoq=1.0:"
-                "open-gop=1:me=4:subme=7"
-            ),
-            "-movflags",
-            "+faststart",
-        ]
 
 
 def run_complex_examples(
