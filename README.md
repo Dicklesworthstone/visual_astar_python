@@ -8,6 +8,11 @@ This project provides a high-performance implementation of the A\* ("A-Star") pa
 - **Diverse Maze Generation**: Multiple algorithms for creating complex and varied mazes, including cellular automata, fractal generation, Voronoi diagrams, and more.
 - **Advanced Visualization**: Detailed visual representation of maze generation and pathfinding, including animation of exploration and path discovery.
 
+
+| ![A\* Visualized in Python!](https://raw.githubusercontent.com/Dicklesworthstone/visual_astar_python/main/illustration.webp) | 
+|:--:| 
+| *A\* Visualized in Python!* |
+
 ## Pathfinding Implementation
 
 ### Design Philosophy and Performance
