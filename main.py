@@ -1297,9 +1297,9 @@ async def run_complex_examples(
 
 
 if __name__ == "__main__":
-    num_animations = 10
-    GRID_SIZE = 91
-    num_problems = 2
-    DPI = 150
-    FPS = 60
+    num_animations = 10  # Set this to the desired number of animations
+    GRID_SIZE = 91  # Resolution of the maze grid
+    num_problems = 2  # Number of mazes to show side by side in each animation
+    DPI = 50  # DPI for the animation
+    FPS = 60  # FPS for the animation    
     asyncio.run(run_complex_examples(num_animations, GRID_SIZE, num_problems, DPI, FPS))
