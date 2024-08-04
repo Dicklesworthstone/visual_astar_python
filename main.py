@@ -6,7 +6,6 @@ import asyncio
 import shutil
 from asyncio import to_thread
 from datetime import datetime
-from collections import deque
 import concurrent.futures
 from concurrent.futures import ProcessPoolExecutor
 from functools import partial
@@ -16,10 +15,9 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.animation import FuncAnimation, FFMpegWriter
 from scipy.spatial import Voronoi
-from skimage.draw import line
 from skimage.morphology import skeletonize, binary_erosion
 from noise import snoise2
-from scipy.ndimage import label, binary_dilation, generate_binary_structure
+from scipy.ndimage import label, binary_dilation
 from scipy.signal import convolve2d
 from skimage.morphology import thin, disk
 from tqdm import tqdm
@@ -598,6 +596,7 @@ def create_maze_from_image(width, height):
     return maze
 
 
+@nb.jit
 def get_valid_tiles(maze, x, y, width, height, tiles):
     valid = np.ones(3, dtype=np.bool_)
     for dx, dy, direction in [
@@ -607,8 +606,12 @@ def get_valid_tiles(maze, x, y, width, height, tiles):
         (-1, 0, 3),
     ]:
         nx, ny = x + dx, y + dy
-        if 0 <= nx < width and 0 <= ny < height and maze[ny, nx] != -1:
-            valid &= tiles[maze[ny, nx]][direction]
+        if 0 <= nx < width and 0 <= ny < height:
+            maze_value = maze[ny, nx]
+            if 0 <= maze_value < 3:  # Ensure maze_value is 0, 1, or 2
+                valid &= tiles[maze_value][direction]
+            else:
+                valid &= False  # If maze_value is invalid, this tile is not valid
     return np.where(valid)[0]
 
 
@@ -629,12 +632,15 @@ def create_wave_function_collapse_maze_core(width, height, tiles, timeout):
                 maze[y, x] = np.random.choice(valid_tiles)
                 for dx, dy in [(0, -1), (1, 0), (0, 1), (-1, 0)]:
                     nx, ny = x + dx, y + dy
-                    if (
-                        0 < nx < width - 1
-                        and 0 < ny < height - 1
-                        and maze[ny, nx] == -1
-                    ):
+                    if 0 < nx < width - 1 and 0 < ny < height - 1 and maze[ny, nx] == -1:
                         stack.append((nx, ny))
+
+    # Fill any remaining -1 cells with random valid tiles
+    for y in range(height):
+        for x in range(width):
+            if maze[y, x] == -1:
+                valid_tiles = get_valid_tiles(maze, x, y, width, height, tiles)
+                maze[y, x] = np.random.choice(valid_tiles) if len(valid_tiles) > 0 else 0
 
     return maze
 
