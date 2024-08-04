@@ -1013,29 +1013,25 @@ def a_star(start, goal, maze):
 
 
 @nb.jit
+def manhattan_distance_to_start(start_x, start_y, point):
+    return abs(point[0] - start_x) + abs(point[1] - start_y)
+
+
+@nb.jit
 def smart_hole_puncher(maze, start, goal):
     path = a_star(start, goal, maze)
     if goal not in path:
         current = goal
+        start_x, start_y = start
         while current != start:
             x, y = current
             if maze[y, x] == 1:
                 maze[y, x] = 0
             neighbors = get_neighbors(x, y, maze.shape)
-            next_step = min(neighbors, key=lambda n: manhattan_distance(start, n))
-            current = next_step
-
-    return maze, True
-
-    path = a_star(start, goal)
-    if goal not in path:
-        current = goal
-        while current != start:
-            x, y = current
-            if maze[y, x] == 1:
-                maze[y, x] = 0
-            neighbors = get_neighbors(x, y)
-            next_step = min(neighbors, key=lambda n: manhattan_distance(start, n))
+            next_step = min(
+                neighbors,
+                key=lambda n: manhattan_distance_to_start(start_x, start_y, n),
+            )
             current = next_step
 
     return maze, True
