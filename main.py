@@ -1024,31 +1024,28 @@ def get_ffmpeg_params(num_cores):
     if check_cuda_support():
         return [
             "-threads", str(num_cores),
-            "-hwaccel", "cuda",
             "-c:v", "hevc_nvenc",
-            "-preset", "p7",  # p1 (fastest) to p7 (best quality)
+            "-preset", "p7",
             "-profile:v", "main",
             "-level:v", "4.1",
-            "-b:v", "5M",  # Example bitrate setting
+            "-b:v", "5M",
             "-movflags", "+faststart"
         ]
     elif check_qsv_support():
         return [
             "-threads", str(num_cores),
-            "-hwaccel", "qsv",
             "-c:v", "hevc_qsv",
-            "-global_quality", "25",  # Adjust quality
+            "-global_quality", "25",
             "-preset:v", "veryslow",
             "-movflags", "+faststart"
         ]
     elif check_amf_support():
         return [
             "-threads", str(num_cores),
-            "-hwaccel", "dxva2",  # Or "d3d11va" depending on your setup
             "-c:v", "hevc_amf",
-            "-quality", "quality",  # Options: speed, balanced, quality
+            "-quality", "quality",
             "-usage", "transcoding",
-            "-b:v", "5M",  # Example bitrate setting
+            "-b:v", "5M",
             "-movflags", "+faststart"
         ]
     else:
