@@ -859,6 +859,26 @@ def create_better_maze(width, height, maze_generation_approach):
         )
 
 
+def maze_hole_puncher(maze, start, goal):
+    """Ensure the maze has a solvable path by creating a direct path from start to goal."""
+    x1, y1 = start
+    x2, y2 = goal
+
+    # Determine the direction of the line to draw
+    dx = 1 if x2 > x1 else -1
+    dy = 1 if y2 > y1 else -1
+
+    # Draw a straight line from start to goal, ensuring a path exists
+    x, y = x1, y1
+    while x != x2 or y != y2:
+        maze[y, x] = 0
+        if x != x2:
+            x += dx
+        if y != y2:
+            y += dy
+    maze[y, x] = 0  # Ensure the goal is also marked as open
+
+
 def generate_solvable_maze(
     width, height, maze_generation_approach, max_attempts=100, timeout=30
 ):
@@ -889,6 +909,14 @@ def generate_solvable_maze(
     print(
         f"Failed to generate a solvable maze after {attempts} attempts and {time.time() - start_time:.2f} seconds"
     )
+
+    # Apply maze_hole_puncher as a last resort to ensure solvability
+    if attempts >= max_attempts:
+        print("Applying maze hole puncher as last resort...")
+        maze_hole_puncher(maze, (1, 1), (width - 2, height - 2))
+        print("Maze modified to be solvable.")
+        return maze, (1, 1), (width - 2, height - 2)
+
     return None, None, None
 
 
@@ -1301,5 +1329,5 @@ if __name__ == "__main__":
     GRID_SIZE = 91  # Resolution of the maze grid
     num_problems = 2  # Number of mazes to show side by side in each animation
     DPI = 50  # DPI for the animation
-    FPS = 60  # FPS for the animation    
+    FPS = 60  # FPS for the animation
     asyncio.run(run_complex_examples(num_animations, GRID_SIZE, num_problems, DPI, FPS))
