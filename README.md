@@ -35,7 +35,7 @@ This project includes a rich variety of maze generation algorithms, each creatin
 
 2. **Game of Life**: Based on Conway's Game of Life, this method uses cellular automata rules to evolve a grid of cells. Each cell can either be alive or dead, with the state of each cell in the next generation determined by the number of alive neighbors. The rules simulate life, death, and reproduction, leading to evolving and dynamic patterns that create unpredictable maze structures as the simulation progresses.
 
-3. **One-Dimensional AutomatA\**: This method generates mazes by applying simple rules to a one-dimensional row of cells, which then evolve over multiple generations. The state of each cell in the next row depends on the current state of itself and its two neighbors, following a specific rule set (encoded as a rule number). The result is a variety of maze patterns, from simple stripes to complex fractal-like designs.
+3. **One-Dimensional Automata**: This method generates mazes by applying simple rules to a one-dimensional row of cells, which then evolve over multiple generations. The state of each cell in the next row depends on the current state of itself and its two neighbors, following a specific rule set (encoded as a rule number). The result is a variety of maze patterns, from simple stripes to complex fractal-like designs.
 
 4. **Langton's Ant**: A simulation of a simple Turing machine that moves on a grid of black and white cells. The "ant" follows a set of rules: turn left or right based on the color of the cell, flip the color of the cell, and move forward. Despite its simplicity, this algorithm creates intricate and often chaotic paths, demonstrating how simple rules can lead to complex behavior.
 
