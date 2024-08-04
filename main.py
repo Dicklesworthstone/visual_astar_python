@@ -677,26 +677,26 @@ def create_wave_function_collapse_maze(width, height, timeout=30):
     return maze
 
 
-@nb.jit
 def create_growing_tree_maze(width, height):
-    maze = [[1 for _ in range(width)] for _ in range(height)]
+    maze = np.ones((height, width), dtype=np.int32)
     stack = [(1, 1)]
-    maze[1][1] = 0
+    maze[1, 1] = 0
+
+    directions = np.array([(0, -1), (1, 0), (0, 1), (-1, 0)])
 
     while stack:
-        if random.random() < 0.5:
-            current = stack.pop(random.randint(0, len(stack) - 1))
+        if np.random.random() < 0.5:
+            current = stack.pop(np.random.randint(0, len(stack)))
         else:
             current = stack.pop()
 
         x, y = current
-        directions = [(0, -1), (1, 0), (0, 1), (-1, 0)]
-        random.shuffle(directions)
+        np.random.shuffle(directions)  # This is now using numpy's shuffle
 
         for dx, dy in directions:
             nx, ny = x + dx, y + dy
-            if 0 < nx < width - 1 and 0 < ny < height - 1 and maze[ny][nx] == 1:
-                maze[ny][nx] = 0
+            if 0 < nx < width - 1 and 0 < ny < height - 1 and maze[ny, nx] == 1:
+                maze[ny, nx] = 0
                 stack.append((nx, ny))
 
     return maze
