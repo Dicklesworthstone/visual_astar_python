@@ -106,7 +106,7 @@ The visualization component in this project is designed to provide a comprehensi
 - **Colormap Selection**: For the exploration and path colors, users can select from predefined colormaps or create custom ones using `LinearSegmentedColormap`. This flexibility ensures that the visualization can be adapted to various aesthetic preferences or accessibility needs.
 
 - **Transparency and Layering**: The visualization supports transparency and layering effects, particularly for the exploration map. By adjusting the alpha value, users can overlay the exploration progress on top of the maze structure without obscuring the underlying details. This feature is useful for simultaneously visualizing the explored area and the structural layout of the maze.
-- 
+
 ### Animation and Export
 
 - **Frame Generation**: The visualization is animated by generating frames that capture the state of the maze and pathfinding process at each time step. The code uses concurrent processing to efficiently generate these frames, leveraging multiple CPU cores for faster rendering. Each frame is created by plotting the maze, exploration progress, and current path status.
@@ -263,6 +263,7 @@ The implementation of A\* in this project goes beyond the basics, making it not 
 - Pillow
 - TQDM
 - FFmpeg (for video encoding)
+- Requests (for getting custom font)
 
 ## License
 

@@ -5,13 +5,12 @@ import os
 import asyncio
 from asyncio import to_thread
 from datetime import datetime
-import multiprocessing
-import concurrent.futures
+from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
-from matplotlib.animation import FuncAnimation, PillowWriter, FFMpegWriter
+from matplotlib.animation import FuncAnimation, FFMpegWriter
 from scipy.spatial import Voronoi
 from skimage.draw import line
 from skimage.morphology import skeletonize
@@ -29,19 +28,21 @@ from matplotlib import font_manager
 plt.switch_backend("Agg")
 
 # Define the URL for the Montserrat font (Regular weight)
-font_url = 'https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-Regular.ttf'
-font_filename = 'Montserrat-Regular.ttf'
-font_path = os.path.join('fonts', font_filename)
+font_url = "https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-Regular.ttf"
+font_filename = "Montserrat-Regular.ttf"
+font_path = os.path.join("fonts", font_filename)
 
 # Create a fonts directory if it doesn't exist
-os.makedirs('fonts', exist_ok=True)
+os.makedirs("fonts", exist_ok=True)
+
 
 # Function to download the font
 def download_font(url, path):
     response = requests.get(url)
     response.raise_for_status()  # Raise an exception for HTTP errors
-    with open(path, 'wb') as f:
+    with open(path, "wb") as f:
         f.write(response.content)
+
 
 # Download the font if it doesn't exist locally or is corrupted
 try:
@@ -56,7 +57,7 @@ except requests.exceptions.RequestException as e:
 # Verify that the font is a valid TrueType font
 try:
     font_manager.fontManager.addfont(font_path)
-    plt.rcParams['font.family'] = 'Montserrat'
+    plt.rcParams["font.family"] = "Montserrat"
     print("Font loaded and set.")
 except RuntimeError as e:
     print(f"Error loading font: {e}")
@@ -913,7 +914,9 @@ def maze_hole_puncher(maze, start, goal):
         attempt += 1
 
         # Select random wall cells to remove
-        wall_positions = get_random_wall_positions(maze, max_starting_removals + attempt)
+        wall_positions = get_random_wall_positions(
+            maze, max_starting_removals + attempt
+        )
 
         # Temporarily remove selected walls
         removed_cells = []
@@ -977,7 +980,7 @@ def generate_solvable_maze(
     return None, None, None
 
 
-def generate_frame(
+def generate_and_save_frame(
     frame,
     all_mazes,
     all_exploration_orders,
@@ -993,17 +996,17 @@ def generate_frame(
     path_color,
     exploration_cmap,
     DPI,
+    output_folder,
+    frame_format,
 ):
+    # Generate the frame as before
     fig, axs = plt.subplots(1, len(all_mazes), figsize=(20, 8), dpi=DPI)
     if len(all_mazes) == 1:
         axs = [axs]
-
-    artists = []
-    for i in range(len(all_mazes)):
-        ax = axs[i]
+    for i, ax in enumerate(axs):
         ax.clear()
-
-        colored_maze = np.where(all_mazes[i] == 1, 1, 0)
+        maze = all_mazes[i]
+        colored_maze = np.where(maze == 1, 1, 0)
         wall_color_rgba = [
             int(wall_color[1:3], 16) / 255,
             int(wall_color[3:5], 16) / 255,
@@ -1020,67 +1023,44 @@ def generate_frame(
         maze_rgba[colored_maze == 1] = wall_color_rgba
         maze_rgba[colored_maze == 0] = floor_color_rgba
 
-        im = ax.imshow(maze_rgba)
-        artists.append(im)
+        ax.imshow(maze_rgba)
 
         exploration_map = np.zeros((GRID_SIZE, GRID_SIZE))
         exploration_length = len(all_exploration_orders[i])
         path_length = len(all_paths[i])
-        total_frames = exploration_length + path_length
 
         if frame < exploration_length:
             for idx, (x, y) in enumerate(all_exploration_orders[i][:frame]):
                 exploration_map[y, x] = idx + 1
-
             if exploration_map.max() > 0:
                 exploration_map = exploration_map / exploration_map.max()
-
-            im2 = ax.imshow(exploration_map, cmap=exploration_cmap, alpha=0.5)
-            artists.append(im2)
+            ax.imshow(exploration_map, cmap=exploration_cmap, alpha=0.5)
         else:
             path_frame = frame - exploration_length
             if path_frame < path_length:
                 path_segment = all_paths[i][: path_frame + 1]
                 path_x, path_y = zip(*path_segment)
-                (path_plot,) = ax.plot(
-                    path_x, path_y, color=path_color, linewidth=2, alpha=0.8
-                )
-                artists.append(path_plot)
+                ax.plot(path_x, path_y, color=path_color, linewidth=2, alpha=0.8)
 
         start_x, start_y = all_starts[i]
         goal_x, goal_y = all_goals[i]
-        start_marker = ax.plot(
-            start_x, start_y, "o", color=start_color, markersize=10, label="Start"
-        )
-        goal_marker = ax.plot(
-            goal_x, goal_y, "o", color=goal_color, markersize=10, label="Goal"
-        )
-        artists.extend(start_marker + goal_marker)
-
+        ax.plot(start_x, start_y, "o", color=start_color, markersize=10, label="Start")
+        ax.plot(goal_x, goal_y, "o", color=goal_color, markersize=10, label="Goal")
         ax.set_title(f"Example {i+1}: {all_maze_approaches[i]}")
         ax.axis("off")
-        if i == 0:
-            legend = ax.legend(loc="upper left", bbox_to_anchor=(0, -0.1))
-            artists.append(legend)
-
-        progress = min(frame / total_frames, 1.0)
-        progress_text = ax.text(
-            0.5, -0.1, f"Progress: {progress:.1%}", transform=ax.transAxes, ha="center"
-        )
-        artists.append(progress_text)
 
     plt.tight_layout()
     fig.canvas.draw()
 
-    # Use buffer_rgba() instead of tostring_rgb()
-    buffer = fig.canvas.buffer_rgba()
-    image = np.asarray(buffer)
-
+    # Save the frame directly to disk
+    frame_filename = os.path.join(output_folder, f"frame_{frame:04d}.{frame_format}")
+    plt.savefig(frame_filename)
     plt.close(fig)
-    return image
+
+    return frame_filename
 
 
-def delete_small_files(folder, size_limit_kb=25):
+def delete_small_files(folder, size_limit_kb=20):
     one_hour_ago = time.time() - 3600
     for filename in os.listdir(folder):
         filepath = os.path.join(folder, filename)
@@ -1098,6 +1078,25 @@ async def save_animation_async(anim, filepath, writer, DPI):
     await to_thread(anim.save, filepath, writer=writer, dpi=DPI)
 
 
+def create_output_folder(base_folder="maze_animations"):
+    """Create a unique sub-folder in the specified base folder, named with the current datetime."""
+    # Ensure the base output folder exists
+    os.makedirs(base_folder, exist_ok=True)
+
+    # Create a unique sub-folder name based on the current datetime
+    now = datetime.now()
+    date_time = now.strftime("%Y%m%d_%H%M%S")
+    animation_folder_name = f"animation_{date_time}"
+
+    # Create the full path for the new sub-folder
+    output_folder = os.path.join(base_folder, animation_folder_name)
+
+    # Create the sub-folder
+    os.makedirs(output_folder, exist_ok=True)
+
+    return output_folder
+
+
 async def run_complex_examples(
     num_animations=1,
     GRID_SIZE=31,
@@ -1113,12 +1112,10 @@ async def run_complex_examples(
     start_color = "#27AE60"
     goal_color = "#E74C3C"
     path_color = "#3498DB"
-
     exploration_colors = ["#FFF9C4", "#FFE082", "#FFB74D", "#FF8A65", "#E57373"]
     exploration_cmap = LinearSegmentedColormap.from_list(
         "exploration", exploration_colors, N=100
     )
-
     maze_generation_approaches = [
         "dla",
         "random_game_of_life",
@@ -1137,14 +1134,9 @@ async def run_complex_examples(
         "reaction_diffusion",
     ]
 
-    output_folder = "maze_animations"
-    os.makedirs(output_folder, exist_ok=True)
-
     for animation_index in range(num_animations):
         print(f"\nGenerating animation {animation_index + 1} of {num_animations}")
-
-        fig, axs = plt.subplots(1, num_problems, figsize=(20, 8), dpi=DPI)
-        fig.suptitle("Advanced Pathfinding Visualization", fontsize=16)
+        output_folder = create_output_folder()
 
         all_exploration_orders = []
         all_paths = []
@@ -1158,7 +1150,6 @@ async def run_complex_examples(
                 maze_generation_approach = override_maze_approach
             else:
                 maze_generation_approach = random.choice(maze_generation_approaches)
-
             all_maze_approaches.append(maze_generation_approach)
 
             print(
@@ -1271,11 +1262,6 @@ async def run_complex_examples(
                 continue
             print("Pathfinding complete.")
 
-            print(f"Problem {i+1}:")
-            print(f"  Maze generation approach: {maze_generation_approach}")
-            print(f"  Exploration order length: {len(exploration_order)}")
-            print(f"  Path length: {len(path)}")
-
             all_exploration_orders.append(exploration_order)
             all_paths.append(path)
             all_mazes.append(maze)
@@ -1293,12 +1279,11 @@ async def run_complex_examples(
         print(f"Max frames: {max_frames}")
 
         max_frames = max(1, max_frames)
-
-        num_cores = multiprocessing.cpu_count()
+        num_cores = os.cpu_count()
         print(f"Using {num_cores} cores for frame generation")
 
         frame_generator = partial(
-            generate_frame,
+            generate_and_save_frame,
             all_mazes=all_mazes,
             all_exploration_orders=all_exploration_orders,
             all_paths=all_paths,
@@ -1313,10 +1298,13 @@ async def run_complex_examples(
             path_color=path_color,
             exploration_cmap=exploration_cmap,
             DPI=DPI,
+            output_folder=output_folder,
+            frame_format=frame_format,
         )
 
-        with concurrent.futures.ProcessPoolExecutor(max_workers=num_cores) as executor:
-            frames = list(
+        # Generate and save frames concurrently
+        with ProcessPoolExecutor(max_workers=num_cores) as executor:
+            list(
                 tqdm(
                     executor.map(frame_generator, range(max_frames)),
                     total=max_frames,
@@ -1324,39 +1312,23 @@ async def run_complex_examples(
                 )
             )
 
-        if save_as_frames:
-            date_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-            animation_folder = os.path.join(
-                output_folder, f"animation_{animation_index + 1}__{date_time}"
-            )
-            os.makedirs(animation_folder, exist_ok=True)
-            for frame_index, frame in enumerate(frames):
-                image = Image.fromarray(frame)
-                image.save(
-                    os.path.join(
-                        animation_folder, f"frame_{frame_index:04d}.{frame_format}"
+        # If saving as a video, compile the saved frames
+        if not save_as_frames:
+            fig, axs = plt.subplots(1, num_problems, figsize=(20, 8), dpi=DPI)
+
+            def update_frame(frame):
+                for i, ax in enumerate(axs):
+                    frame_filename = os.path.join(
+                        output_folder, f"frame_{frame:04d}.{frame_format}"
                     )
-                )
-            print(
-                f"Frames saved as '{frame_format}' format in folder '{animation_folder}'"
+                    img = Image.open(frame_filename)
+                    ax.clear()
+                    ax.imshow(img)
+                    ax.axis("off")
+
+            anim = FuncAnimation(
+                fig, update_frame, frames=max_frames, interval=100, blit=False
             )
-        else:
-            if num_problems == 1:
-                anim = FuncAnimation(
-                    fig,
-                    lambda f: axs.imshow(frames[f]),
-                    frames=max_frames,
-                    interval=100,
-                    blit=False,
-                )
-            else:
-                anim = FuncAnimation(
-                    fig,
-                    lambda f: [axs[i].imshow(frames[f]) for i in range(num_problems)],
-                    frames=max_frames,
-                    interval=100,
-                    blit=False,
-                )
 
             ffmpeg_params = [
                 "-threads",
@@ -1393,9 +1365,9 @@ async def run_complex_examples(
 
 if __name__ == "__main__":
     num_animations = 1  # Set this to the desired number of animations to generate
-    GRID_SIZE = 151  # Resolution of the maze grid
+    GRID_SIZE = 351  # Resolution of the maze grid
     num_problems = 2  # Number of mazes to show side by side in each animation
-    DPI = 200  # DPI for the animation
+    DPI = 300  # DPI for the animation
     FPS = 60  # FPS for the animation
     save_as_frames = 1  # Set this to 1 to save frames as individual images in a generated sub-folder; 0 to save as a single video
     asyncio.run(
