@@ -37,7 +37,7 @@ font_path = os.path.join("fonts", font_filename)
 # Create a fonts directory if it doesn't exist
 os.makedirs("fonts", exist_ok=True)
 
-os.nice(10)  # Increase the niceness value to lower the priority
+os.nice(20)  # Increase the niceness value to lower the priority
 
 
 # Function to download the font
@@ -420,24 +420,28 @@ def is_maze_solvable(maze, start, goal, max_iterations=100000):
     return False
 
 
+@nb.jit(nopython=True)
 def create_dla_maze(width, height):
     maze = np.zeros((height, width), dtype=np.int32)
     maze[0, :] = maze[-1, :] = maze[:, 0] = maze[:, -1] = 1
 
-    num_seeds = random.randint(
+    num_seeds = np.random.randint(
         max(3, min(width, height) // 20), max(10, min(width, height) // 5)
     )
-    for _ in range(num_seeds):
-        x, y = random.randint(1, width - 2), random.randint(1, height - 2)
-        maze[y, x] = 1
+    seed_positions = np.random.randint(
+        1, min(width - 1, height - 1), size=(num_seeds, 2)
+    )
+    maze[seed_positions[:, 1], seed_positions[:, 0]] = 1
 
-    num_particles = random.randint(width * height // 16, width * height // 8)
+    num_particles = np.random.randint(width * height // 16, width * height // 8)
+    directions = np.array([(0, 1), (1, 0), (0, -1), (-1, 0)])
+
     for _ in range(num_particles):
-        x, y = random.randint(1, width - 2), random.randint(1, height - 2)
+        x, y = np.random.randint(1, width - 1), np.random.randint(1, height - 1)
         steps = 0
-        max_steps = random.randint(100, 1000)
+        max_steps = np.random.randint(100, 1000)
         while maze[y, x] == 0 and steps < max_steps:
-            dx, dy = random.choice([(0, 1), (1, 0), (0, -1), (-1, 0)])
+            dx, dy = directions[np.random.randint(4)]
             nx, ny = x + dx, y + dy
             if 0 <= nx < width and 0 <= ny < height:
                 if maze[ny, nx] == 1:
@@ -449,7 +453,7 @@ def create_dla_maze(width, height):
     # Ensure connectivity
     for y in range(1, height - 1):
         for x in range(1, width - 1):
-            if maze[y, x] == 1 and random.random() < 0.1:
+            if maze[y, x] == 1 and np.random.random() < 0.1:
                 maze[y, x] = 0
 
     return maze
@@ -527,7 +531,7 @@ def create_langtons_ant_maze(width, height):
 
 
 def create_voronoi_maze(width, height):
-    num_points = random.randint(max(width, height) // 3, max(width, height) // 2)
+    num_points = np.random.randint(max(width, height) // 3, max(width, height) // 2)
     points = np.random.rand(num_points, 2) * [width, height]
     vor = Voronoi(points)
 
@@ -596,25 +600,21 @@ def create_maze_from_image(width, height):
     return maze
 
 
-@nb.jit
+@nb.jit(nopython=True)
 def get_valid_tiles(maze, x, y, width, height, tiles):
     valid = np.ones(3, dtype=np.bool_)
-    for dx, dy, direction in [
-        (0, -1, 0),
-        (1, 0, 1),
-        (0, 1, 2),
-        (-1, 0, 3),
-    ]:
+    for dx, dy, direction in [(0, -1, 0), (1, 0, 1), (0, 1, 2), (-1, 0, 3)]:
         nx, ny = x + dx, y + dy
         if 0 <= nx < width and 0 <= ny < height:
             maze_value = maze[ny, nx]
-            if 0 <= maze_value < 3:  # Ensure maze_value is 0, 1, or 2
+            if 0 <= maze_value < 3:
                 valid &= tiles[maze_value][direction]
             else:
-                valid &= False  # If maze_value is invalid, this tile is not valid
+                valid &= False
     return np.where(valid)[0]
 
 
+@nb.jit(nopython=True)
 def create_wave_function_collapse_maze_core(width, height, tiles, timeout):
     maze = np.full((height, width), -1, dtype=np.int32)
     stack = [(np.random.randint(1, width - 2), np.random.randint(1, height - 2))]
@@ -623,8 +623,7 @@ def create_wave_function_collapse_maze_core(width, height, tiles, timeout):
     while stack and time.time() - start_time < timeout:
         idx = np.random.randint(0, len(stack))
         x, y = stack[idx]
-        stack[idx] = stack[-1]
-        stack.pop()
+        stack.pop(idx)
 
         if maze[y, x] == -1:
             valid_tiles = get_valid_tiles(maze, x, y, width, height, tiles)
@@ -638,15 +637,6 @@ def create_wave_function_collapse_maze_core(width, height, tiles, timeout):
                         and maze[ny, nx] == -1
                     ):
                         stack.append((nx, ny))
-
-    # Fill any remaining -1 cells with random valid tiles
-    for y in range(height):
-        for x in range(width):
-            if maze[y, x] == -1:
-                valid_tiles = get_valid_tiles(maze, x, y, width, height, tiles)
-                maze[y, x] = (
-                    np.random.choice(valid_tiles) if len(valid_tiles) > 0 else 0
-                )
 
     return maze
 
@@ -702,24 +692,26 @@ def create_growing_tree_maze(width, height):
     return maze
 
 
+@nb.jit(nopython=True)
+def generate_terrain(width, height, scale, octaves, persistence, lacunarity):
+    terrain = np.zeros((height, width), dtype=np.float32)
+    for y in range(height):
+        for x in range(width):
+            terrain[y, x] = snoise2(
+                x * scale,
+                y * scale,
+                octaves=octaves,
+                persistence=persistence,
+                lacunarity=lacunarity,
+            )
+    return terrain
+
+
 def create_terrain_based_maze(width, height):
     scale = np.random.uniform(0.05, 0.1)
     octaves = np.random.randint(4, 6)
     persistence = np.random.uniform(0.5, 0.7)
     lacunarity = np.random.uniform(2.0, 2.5)
-
-    def generate_terrain(width, height, scale, octaves, persistence, lacunarity):
-        terrain = np.zeros((height, width), dtype=np.float32)
-        for y in range(height):
-            for x in range(width):
-                terrain[y, x] = snoise2(
-                    x * scale,
-                    y * scale,
-                    octaves=octaves,
-                    persistence=persistence,
-                    lacunarity=lacunarity,
-                )
-        return terrain
 
     terrain = generate_terrain(width, height, scale, octaves, persistence, lacunarity)
     terrain = (terrain - terrain.min()) / (terrain.max() - terrain.min())
@@ -868,21 +860,21 @@ def create_cellular_automaton_maze(width, height):
     return maze
 
 
-def create_fourier_maze(width, height):
+@nb.jit(nopython=True)
+def create_fourier_maze_core(width, height):
     noise = np.random.rand(height, width)
     fft_noise = np.fft.fft2(noise)
 
     center_y, center_x = height // 2, width // 2
     y, x = np.ogrid[-center_y : height - center_y, -center_x : width - center_x]
 
-    low_freq = (x * x + y * y <= (min(width, height) // 8) ** 2).astype(np.float32)
+    min_dim = min(width, height)
+    low_freq = (x * x + y * y <= (min_dim // 8) ** 2).astype(np.float32)
     mid_freq = (
-        (x * x + y * y <= (min(width, height) // 4) ** 2)
-        & (x * x + y * y > (min(width, height) // 8) ** 2)
+        (x * x + y * y <= (min_dim // 4) ** 2) & (x * x + y * y > (min_dim // 8) ** 2)
     ).astype(np.float32)
     high_freq = (
-        (x * x + y * y <= (min(width, height) // 2) ** 2)
-        & (x * x + y * y > (min(width, height) // 4) ** 2)
+        (x * x + y * y <= (min_dim // 2) ** 2) & (x * x + y * y > (min_dim // 4) ** 2)
     ).astype(np.float32)
 
     mask = 0.6 * low_freq + 0.3 * mid_freq + 0.1 * high_freq
@@ -890,6 +882,11 @@ def create_fourier_maze(width, height):
     filtered_fft = fft_noise * mask
     maze = np.real(np.fft.ifft2(filtered_fft))
 
+    return maze
+
+
+def create_fourier_maze(width, height):
+    maze = create_fourier_maze_core(width, height)
     maze = (maze > np.percentile(maze, 60)).astype(np.int32)
 
     # Apply erosion to create wider passages
@@ -905,6 +902,15 @@ def create_fourier_maze(width, height):
     return maze
 
 
+@nb.jit(nopython=True)
+def reaction_diffusion_step(A, B, DA, DB, f, k, laplacian_kernel):
+    A_lap = convolve2d(A, laplacian_kernel, mode="same", boundary="wrap")
+    B_lap = convolve2d(B, laplacian_kernel, mode="same", boundary="wrap")
+    A += DA * A_lap - A * B**2 + f * (1 - A)
+    B += DB * B_lap + A * B**2 - (k + f) * B
+    return np.clip(A, 0, 1), np.clip(B, 0, 1)
+
+
 def create_reaction_diffusion_maze(width, height):
     A = np.random.rand(height, width)
     B = np.random.rand(height, width)
@@ -915,13 +921,7 @@ def create_reaction_diffusion_maze(width, height):
     f, k = 0.035, 0.065
 
     for _ in range(20):
-        A_lap = convolve2d(A, laplacian_kernel, mode="same", boundary="wrap")
-        B_lap = convolve2d(B, laplacian_kernel, mode="same", boundary="wrap")
-        A += DA * A_lap - A * B**2 + f * (1 - A)
-        B += DB * B_lap + A * B**2 - (k + f) * B
-
-        A = np.clip(A, 0, 1)
-        B = np.clip(B, 0, 1)
+        A, B = reaction_diffusion_step(A, B, DA, DB, f, k, laplacian_kernel)
 
     maze = (A - A.min()) / (A.max() - A.min())
     maze = (maze > np.random.uniform(0.4, 0.6)).astype(np.int32)
@@ -1062,7 +1062,7 @@ def smart_hole_puncher(maze, start, goal):
 
 def set_nice():
     try:
-        os.nice(10)  # Increase the niceness value to lower the priority
+        os.nice(20)  # Increase the niceness value to lower the priority
     except AttributeError:
         pass  # os.nice() is not available on Windows
 
@@ -1285,15 +1285,31 @@ def bresenham_line(x0, y0, x1, y1):
     return line_points
 
 
-@nb.njit
+@nb.jit(nopython=True)
 def draw_lines(maze, vertices, ridge_vertices):
     for simplex in ridge_vertices:
-        if -1 not in simplex:
-            p1, p2 = vertices[simplex]
-            line_points = bresenham_line(int(p1[1]), int(p1[0]), int(p2[1]), int(p2[0]))
-            for y, x in line_points:
-                if 0 <= y < maze.shape[0] and 0 <= x < maze.shape[1]:
-                    maze[y, x] = 0
+        if simplex[0] != -1 and simplex[1] != -1:
+            p1, p2 = vertices[simplex[0]], vertices[simplex[1]]
+            x1, y1 = int(p1[1]), int(p1[0])
+            x2, y2 = int(p2[1]), int(p2[0])
+            dx = abs(x2 - x1)
+            dy = abs(y2 - y1)
+            sx = 1 if x1 < x2 else -1
+            sy = 1 if y1 < y2 else -1
+            err = dx - dy
+
+            while True:
+                if 0 <= y1 < maze.shape[0] and 0 <= x1 < maze.shape[1]:
+                    maze[y1, x1] = 0
+                if x1 == x2 and y1 == y2:
+                    break
+                e2 = 2 * err
+                if e2 > -dy:
+                    err -= dy
+                    x1 += sx
+                if e2 < dx:
+                    err += dx
+                    y1 += sy
     return maze
 
 
@@ -1404,6 +1420,29 @@ def prepare_maze_rgba(maze, wall_color_rgba, floor_color_rgba):
     return maze_rgba
 
 
+@nb.jit(nopython=True)
+def prepare_exploration_map(exploration_order, frame, GRID_SIZE):
+    exploration_map = np.zeros((GRID_SIZE, GRID_SIZE), dtype=np.float32)
+    for idx, (x, y) in enumerate(exploration_order[:frame]):
+        exploration_map[y, x] = idx + 1
+    if exploration_map.max() > 0:
+        exploration_map /= exploration_map.max()
+    return exploration_map
+
+
+@nb.jit(nopython=True)
+def prepare_maze_rgba(maze, wall_color_rgba, floor_color_rgba):
+    height, width = maze.shape
+    maze_rgba = np.zeros((height, width, 4), dtype=np.float32)
+    for y in range(height):
+        for x in range(width):
+            if maze[y, x] == 1:
+                maze_rgba[y, x] = wall_color_rgba
+            else:
+                maze_rgba[y, x] = floor_color_rgba
+    return maze_rgba
+
+
 def generate_and_save_frame(
     frame,
     all_mazes,
@@ -1423,15 +1462,6 @@ def generate_and_save_frame(
     output_folder,
     frame_format,
 ):
-    @nb.jit(nopython=True)
-    def prepare_exploration_map(exploration_order, frame, GRID_SIZE):
-        exploration_map = np.zeros((GRID_SIZE, GRID_SIZE), dtype=np.float32)
-        for idx, (x, y) in enumerate(exploration_order[:frame]):
-            exploration_map[y, x] = idx + 1
-        if exploration_map.max() > 0:
-            exploration_map /= exploration_map.max()
-        return exploration_map
-
     fig, axs = plt.subplots(1, len(all_mazes), figsize=(20, 8), dpi=DPI)
     if len(all_mazes) == 1:
         axs = [axs]
@@ -1545,7 +1575,7 @@ async def run_complex_examples(
     num_problems=1,
     DPI=50,
     FPS=60,
-    save_as_frames=False,
+    save_as_frames_only=False,
     frame_format="png",
     override_maze_approach=None,
 ):
@@ -1759,7 +1789,7 @@ async def run_complex_examples(
             )
 
         # If saving as a video, compile the saved frames
-        if not save_as_frames:
+        if not save_as_frames_only:
             fig, axs = plt.subplots(1, num_problems, figsize=(20, 8), dpi=DPI)
             if num_problems == 1:
                 axs = [axs]
@@ -2034,14 +2064,14 @@ if __name__ == "__main__":
         test_result = test_a_star_implementations(num_tests=20, grid_size=231)
         print(f"Overall test result: {'Passed' if test_result else 'Failed'}")
 
-    num_animations = 5  # Set this to the desired number of animations to generate
-    GRID_SIZE = 91  # Resolution of the maze grid
+    num_animations = 1  # Set this to the desired number of animations to generate
+    GRID_SIZE = 131  # Resolution of the maze grid
     num_problems = 3  # Number of mazes to show side by side in each animation
     DPI = 400  # DPI for the animation
     FPS = 5  # FPS for the animation
-    save_as_frames = 0  # Set this to 1 to save frames as individual images in a generated sub-folder; 0 to save as a single video
+    save_as_frames_only = 1  # Set this to 1 to save frames as individual images in a generated sub-folder; 0 to save as a single video as well
     asyncio.run(
         run_complex_examples(
-            num_animations, GRID_SIZE, num_problems, DPI, FPS, save_as_frames
+            num_animations, GRID_SIZE, num_problems, DPI, FPS, save_as_frames_only
         )
     )
