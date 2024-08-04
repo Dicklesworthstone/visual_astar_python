@@ -1297,8 +1297,8 @@ def run_complex_examples(
 
 if __name__ == "__main__":
     num_animations = 3  # Set this to the desired number of animations
-    GRID_SIZE = 31  # Resolution of the maze grid
+    GRID_SIZE = 91  # Resolution of the maze grid
     num_problems = 2  # Number of mazes to show side by side in each animation
-    DPI = 50  # DPI for the animation
+    DPI = 150  # DPI for the animation
     FPS = 60  # FPS for the animation
     run_complex_examples(num_animations, GRID_SIZE, num_problems, DPI, FPS)
