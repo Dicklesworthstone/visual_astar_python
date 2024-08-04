@@ -1001,7 +1001,6 @@ def delete_small_files(folder, size_limit_kb=25):
 
 def check_cuda_support():
     try:
-        # Check if 'nvcc' is available to confirm the presence of the CUDA toolkit
         nvcc_result = subprocess.run(
             ["nvcc", "--version"],
             stdout=subprocess.PIPE,
@@ -1012,7 +1011,6 @@ def check_cuda_support():
             print("CUDA toolkit is not installed or not available in PATH.")
             return False
 
-        # Check if the NVIDIA driver is loaded and the necessary libraries are available
         ldconfig_result = subprocess.run(
             ["ldconfig", "-p"],
             stdout=subprocess.PIPE,
@@ -1023,7 +1021,6 @@ def check_cuda_support():
             print("NVIDIA driver or libcuda.so.1 is missing.")
             return False
 
-        # Check available hardware accelerations in FFmpeg
         hwaccel_result = subprocess.run(
             ["ffmpeg", "-hide_banner", "-hwaccels"],
             stdout=subprocess.PIPE,
@@ -1036,7 +1033,6 @@ def check_cuda_support():
             )
             return False
 
-        # Verify that 'hevc_nvenc' is among the available encoders
         encoders_result = subprocess.run(
             ["ffmpeg", "-hide_banner", "-encoders"],
             stdout=subprocess.PIPE,
@@ -1058,26 +1054,47 @@ def check_cuda_support():
 
 def check_qsv_support():
     try:
-        result = subprocess.run(
+        hwaccel_result = subprocess.run(
             ["ffmpeg", "-hide_banner", "-hwaccels"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
         )
-        return "qsv" in result.stdout.lower()
+        if "qsv" not in hwaccel_result.stdout.lower():
+            return False
+
+        encoders_result = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-encoders"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        return "hevc_qsv" in encoders_result.stdout.lower()
     except Exception:
         return False
 
 
 def check_amf_support():
     try:
-        result = subprocess.run(
+        hwaccel_result = subprocess.run(
             ["ffmpeg", "-hide_banner", "-hwaccels"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
         )
-        return "dxva2" in result.stdout.lower() or "d3d11va" in result.stdout.lower()
+        if (
+            "dxva2" not in hwaccel_result.stdout.lower()
+            and "d3d11va" not in hwaccel_result.stdout.lower()
+        ):
+            return False
+
+        encoders_result = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-encoders"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        return "hevc_amf" in encoders_result.stdout.lower()
     except Exception:
         return False
 
@@ -1085,7 +1102,7 @@ def check_amf_support():
 def get_ffmpeg_params(num_cores):
     if check_cuda_support():
         print("CUDA support detected, using hevc_nvenc for hardware encoding.")
-        return [
+        params = [
             "-threads",
             str(num_cores),
             "-c:v",
@@ -1103,7 +1120,7 @@ def get_ffmpeg_params(num_cores):
         ]
     elif check_qsv_support():
         print("QSV support detected, using hevc_qsv for hardware encoding.")
-        return [
+        params = [
             "-threads",
             str(num_cores),
             "-c:v",
@@ -1117,7 +1134,7 @@ def get_ffmpeg_params(num_cores):
         ]
     elif check_amf_support():
         print("AMF support detected, using hevc_amf for hardware encoding.")
-        return [
+        params = [
             "-threads",
             str(num_cores),
             "-c:v",
@@ -1134,6 +1151,49 @@ def get_ffmpeg_params(num_cores):
     else:
         print(
             "No hardware acceleration support detected, using libx265 for software encoding."
+        )
+        params = [
+            "-threads",
+            str(num_cores),
+            "-c:v",
+            "libx265",
+            "-preset",
+            "veryslow",
+            "-crf",
+            "18",
+            "-x265-params",
+            (
+                f"numa-pools=48:frame-threads={num_cores}:pmode=1:pme=1:"
+                "rc-lookahead=60:bframes=8:b-adapt=2:ctu=64:ref=6:"
+                "scenecut=40:min-keyint=1:keyint=250:"
+                "aq-mode=3:psy-rd=2.0:psy-rdoq=1.0:"
+                "open-gop=1:me=4:subme=7"
+            ),
+            "-movflags",
+            "+faststart",
+        ]
+
+    # Check if the hardware encoding params are valid by running a dummy command
+    try:
+        test_command = [
+            "ffmpeg",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:s=2x2:d=1",
+            "-frames:v",
+            "1",
+            "-f",
+            "null",
+            "-",
+        ] + params
+        subprocess.run(
+            test_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
+        return params
+    except Exception as e:
+        print(
+            f"Error with selected FFmpeg parameters: {e}. Falling back to software encoding."
         )
         return [
             "-threads",
