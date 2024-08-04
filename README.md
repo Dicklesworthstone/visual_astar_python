@@ -8,10 +8,7 @@ This project provides a high-performance implementation of the A\* ("A-Star") pa
 - **Diverse Maze Generation**: Multiple algorithms for creating complex and varied mazes, including cellular automata, fractal generation, Voronoi diagrams, and more.
 - **Advanced Visualization**: Detailed visual representation of maze generation and pathfinding, including animation of exploration and path discovery.
 
-
-| ![A\* Visualized in Python!](https://raw.githubusercontent.com/Dicklesworthstone/visual_astar_python/main/illustration.webp) | 
-|:--:| 
-| *A\* Visualized in Python!* |
+![A\* Visualized in Python!](https://raw.githubusercontent.com/Dicklesworthstone/visual_astar_python/main/illustration.webp)
 
 ## Pathfinding Implementation
 
@@ -106,6 +103,21 @@ The visualization component in this project is designed to provide a comprehensi
 
 ## Usage
 
+### Initial Setup
+
+Clone the repo and set up a virtual environment with the required packages using (tested on Python 3.12 and Ubuntu 22):
+
+```bash
+git clone https://github.com/Dicklesworthstone/visual_astar_python.git
+cd visual_astar_python
+python -m venv venv
+source venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install wheel
+python -m pip install --upgrade setuptools wheel
+pip install -r requirements.txt
+```
+
 ### Generating and Visualizing Mazes
 
 To generate and visualize a maze, run the main script with the desired parameters:
@@ -183,7 +195,6 @@ The implementation of A\* in this project goes beyond the basics, making it not 
 6. **Built-in Safeguards**: The implementation is robust, designed to handle tricky situations gracefully. Whether it's encountering a dead end or an unreachable goal, it manages these scenarios without crashing or getting stuck, providing clear feedback on what's happening.
 
 7. **Efficient Data Representation**: It uses bit fields for encoding these coordinates, which streamlines the process of storing and retrieving node information. This bit-level manipulation not only saves memory but also enhances processing speed, as bitwise operations are computationally inexpensive.
-    
 
 ## Dependencies
 
@@ -196,19 +207,6 @@ The implementation of A\* in this project goes beyond the basics, making it not 
 - Pillow
 - TQDM
 - FFmpeg (for video encoding)
-
-Install the required packages using:
-
-```bash
-git clone https://github.com/Dicklesworthstone/visual_astar_python.git
-cd visual_astar_python
-python -m venv venv
-source venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install wheel
-python -m pip install --upgrade setuptools wheel
-pip install -r requirements.txt
-```
 
 ## License
 
