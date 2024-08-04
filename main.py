@@ -397,7 +397,7 @@ def create_dla_maze(width, height):
         x, y = random.randint(1, width - 2), random.randint(1, height - 2)
         maze[y, x] = 1
 
-    num_particles = random.randint(width * height // 8, width * height // 2)
+    num_particles = random.randint(width * height // 16, width * height // 8)
     for _ in range(num_particles):
         x, y = random.randint(1, width - 2), random.randint(1, height - 2)
         steps = 0
@@ -411,6 +411,12 @@ def create_dla_maze(width, height):
                     break
                 x, y = nx, ny
             steps += 1
+
+    # Ensure connectivity
+    for y in range(1, height - 1):
+        for x in range(1, width - 1):
+            if maze[y, x] == 1 and random.random() < 0.1:
+                maze[y, x] = 0
 
     return maze
 
@@ -928,7 +934,7 @@ def smart_hole_puncher(maze, start, goal):
             if 0 <= x + dx < maze.shape[1] and 0 <= y + dy < maze.shape[0]
         ]
 
-    def heuristic(a, b):
+    def manhattan_distance(a, b):
         return abs(b[0] - a[0]) + abs(b[1] - a[1])
 
     def a_star(start, goal):
@@ -947,7 +953,7 @@ def smart_hole_puncher(maze, start, goal):
                 new_cost = cost_so_far[current] + 1
                 if next not in cost_so_far or new_cost < cost_so_far[next]:
                     cost_so_far[next] = new_cost
-                    priority = new_cost + heuristic(goal, next)
+                    priority = new_cost + manhattan_distance(goal, next)
                     frontier.insert(next, priority)
                     came_from[next] = current
 
@@ -955,18 +961,14 @@ def smart_hole_puncher(maze, start, goal):
 
     path = a_star(start, goal)
     if goal not in path:
-        return maze, False
-
-    current = goal
-    while current != start:
-        x, y = current
-        if maze[y, x] == 1:
-            # Intelligent wall removal: check surroundings before punching
-            neighbors = get_neighbors(x, y)
-            wall_count = sum(maze[ny, nx] for nx, ny in neighbors)
-            if wall_count >= 2:  # Only remove if it doesn't create a wide corridor
+        current = goal
+        while current != start:
+            x, y = current
+            if maze[y, x] == 1:
                 maze[y, x] = 0
-        current = path[current]
+            neighbors = get_neighbors(x, y)
+            next_step = min(neighbors, key=lambda n: manhattan_distance(start, n))
+            current = next_step
 
     return maze, True
 
@@ -1180,18 +1182,7 @@ def validate_and_adjust_maze(maze, maze_generation_approach):
     print(f"\nValidating and adjusting maze for {maze_generation_approach}")
     print(f"Initial maze shape: {height}x{width}")
 
-    if maze_generation_approach in [
-        "fourier",
-        "quantum_inspired",
-        "terrain",
-        "musicalized",
-        "artistic",
-        "reaction_diffusion",
-    ]:
-        target_wall_percentage = np.random.uniform(0.2, 0.4)
-    else:
-        target_wall_percentage = np.random.uniform(0.25, 0.35)
-
+    target_wall_percentage = np.random.uniform(0.2, 0.3)
     print(f"Target wall percentage: {target_wall_percentage:.2f}")
 
     wall_count = np.sum(maze)
@@ -1200,24 +1191,23 @@ def validate_and_adjust_maze(maze, maze_generation_approach):
     print(f"Initial wall count: {wall_count}")
     print(f"Initial wall percentage: {wall_percentage:.2f}")
 
-    adjustment_factor = 0.02
+    # Ensure connectivity
+    labeled_areas, num_areas = label(1 - maze)
+    if num_areas > 1:
+        print(f"Connecting {num_areas} disconnected areas...")
+        maze = connect_disconnected_areas(maze)
+
+    # Adjust wall percentage if needed
+    adjustment_factor = 0.05
     if wall_percentage < target_wall_percentage - adjustment_factor:
         print("Wall percentage too low. Adding walls...")
-        maze = add_walls(maze, wall_percentage + adjustment_factor)
+        maze = add_walls(maze, target_wall_percentage)
     elif wall_percentage > target_wall_percentage + adjustment_factor:
         print("Wall percentage too high. Removing walls...")
-        maze = remove_walls(maze, wall_percentage - adjustment_factor)
-    else:
-        print("Wall percentage within acceptable range. No adjustment needed.")
+        maze = remove_walls(maze, target_wall_percentage)
 
     maze[0, :] = maze[-1, :] = maze[:, 0] = maze[:, -1] = 1
     print("Ensured border walls")
-
-    print("Breaking up large open areas...")
-    maze = break_up_large_areas(maze, max_area_percentage=0.2)
-
-    print("Connecting disconnected areas...")
-    maze = connect_disconnected_areas(maze)
 
     final_wall_count = np.sum(maze)
     final_wall_percentage = final_wall_count / total_cells
@@ -1243,7 +1233,7 @@ def generate_and_validate_maze(width, height, maze_generation_approach):
 
 
 def generate_solvable_maze(
-    width, height, maze_generation_approach, max_attempts=50, max_workers=None
+    width, height, maze_generation_approach, max_attempts=20, max_workers=None
 ):
     print(
         f"Attempting to generate a solvable maze using {maze_generation_approach} approach..."
@@ -1262,24 +1252,21 @@ def generate_solvable_maze(
 
             if is_solvable:
                 print(f"Solvable maze found after checking {idx + 1} mazes")
-                # Cancel all other running futures
                 for f in futures:
                     f.cancel()
                 return maze, start, goal
 
-    print(
-        f"Failed to generate a solvable maze after {max_attempts} attempts. Trying smart hole puncher..."
-    )
+            # Apply smart hole puncher even if not initially solvable
+            maze, success = smart_hole_puncher(maze, start, goal)
+            if success:
+                is_solvable = is_maze_solvable(maze, start, goal)
+                if is_solvable:
+                    print(
+                        f"Solvable maze created using smart hole puncher after {idx + 1} attempts"
+                    )
+                    return maze, start, goal
 
-    # Try smart hole puncher on the last generated maze
-    maze, success = smart_hole_puncher(maze, start, goal)
-    if success:
-        is_solvable = is_maze_solvable(maze, start, goal)
-        if is_solvable:
-            print("Solvable maze created using smart hole puncher")
-            return maze, start, goal
-
-    print("Failed to generate a solvable maze even with smart hole puncher")
+    print(f"Failed to generate a solvable maze after {max_attempts} attempts.")
     return None, None, None
 
 
@@ -1423,7 +1410,6 @@ async def run_complex_examples(
         "dla",
         "random_game_of_life",
         "random_one_dim_automata",
-        # "langtons_ant",
         "voronoi",
         "fractal",
         "wave_function_collapse",
@@ -1449,22 +1435,31 @@ async def run_complex_examples(
         all_maze_approaches = []
 
         for i in range(num_problems):
-            if override_maze_approach:
-                maze_generation_approach = override_maze_approach
-            else:
-                maze_generation_approach = random.choice(maze_generation_approaches)
-            all_maze_approaches.append(maze_generation_approach)
+            attempts = 0
+            max_attempts = 5  # Allow more attempts per problem
 
-            print(
-                f"Starting maze generation for problem {i+1} using {maze_generation_approach} approach..."
-            )
-            maze, start, goal = generate_solvable_maze(
-                GRID_SIZE, GRID_SIZE, maze_generation_approach
-            )
+            while attempts < max_attempts:
+                if override_maze_approach:
+                    maze_generation_approach = override_maze_approach
+                else:
+                    maze_generation_approach = random.choice(maze_generation_approaches)
+
+                print(
+                    f"Starting maze generation for problem {i+1} using {maze_generation_approach} approach (attempt {attempts+1})..."
+                )
+                maze, start, goal = generate_solvable_maze(
+                    GRID_SIZE, GRID_SIZE, maze_generation_approach
+                )
+
+                if maze is not None:
+                    break
+
+                attempts += 1
+                print(f"Failed to generate a solvable maze. Trying again.")
 
             if maze is None:
                 print(
-                    f"Failed to generate a solvable maze for problem {i+1}. Skipping this problem."
+                    f"Failed to generate a solvable maze for problem {i+1} after {max_attempts} attempts. Skipping this problem."
                 )
                 continue
 
@@ -1570,6 +1565,7 @@ async def run_complex_examples(
             all_mazes.append(maze)
             all_starts.append((start_x, start_y))
             all_goals.append((goal_x, goal_y))
+            all_maze_approaches.append(maze_generation_approach)
 
         if not all_paths:
             print("No valid paths found. Skipping this animation.")
@@ -1620,6 +1616,8 @@ async def run_complex_examples(
         # If saving as a video, compile the saved frames
         if not save_as_frames:
             fig, axs = plt.subplots(1, num_problems, figsize=(20, 8), dpi=DPI)
+            if num_problems == 1:
+                axs = [axs]
 
             def update_frame(frame):
                 for i, ax in enumerate(axs):
