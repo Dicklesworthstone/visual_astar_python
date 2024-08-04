@@ -1723,7 +1723,7 @@ async def run_complex_examples(
         print(f"Max frames: {max_frames}")
 
         max_frames = max(1, max_frames)
-        num_cores = os.cpu_count()
+        num_cores = max([1, os.cpu_count() - 4])
         print(f"Using {num_cores} cores for frame generation")
 
         frame_generator = partial(
@@ -1802,9 +1802,7 @@ async def run_complex_examples(
             filename = f"{maze_approach}_{date_time}.mp4"
             filepath = os.path.join(output_folder, filename)
 
-            print(
-                f"Saving MP4 using {num_cores} cores for encoding with optimized settings..."
-            )
+            print("Saving MP4 for encoding with optimized settings...")
             await save_animation_async(anim, filepath, writer, DPI)
             print(f"Animation saved as '{filepath}'")
             delete_small_files(output_folder)
