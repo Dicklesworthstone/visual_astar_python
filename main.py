@@ -619,12 +619,12 @@ def get_valid_tiles(maze, x, y, width, height, tiles):
 
 
 @nb.jit(nopython=True)
-def create_wave_function_collapse_maze_core(width, height, tiles, timeout):
+def create_wave_function_collapse_maze_core(width, height, tiles, max_iterations):
     maze = np.full((height, width), -1, dtype=np.int32)
     stack = [(np.random.randint(1, width - 2), np.random.randint(1, height - 2))]
-    start_time = time.time()
 
-    while stack and time.time() - start_time < timeout:
+    iterations = 0
+    while stack and iterations < max_iterations:
         idx = np.random.randint(0, len(stack))
         x, y = stack[idx]
         stack.pop(idx)
@@ -642,6 +642,8 @@ def create_wave_function_collapse_maze_core(width, height, tiles, timeout):
                     ):
                         stack.append((nx, ny))
 
+        iterations += 1
+
     return maze
 
 
@@ -655,7 +657,10 @@ def create_wave_function_collapse_maze(width, height, timeout=30):
         dtype=np.bool_,
     )
 
-    maze = create_wave_function_collapse_maze_core(width, height, tiles, timeout)
+    start_time = time.time()
+    max_iterations = width * height * 10  # Adjust this factor as needed
+
+    maze = create_wave_function_collapse_maze_core(width, height, tiles, max_iterations)
 
     # Fill any remaining -1 cells with random valid tiles
     for y in range(height):
@@ -668,6 +673,13 @@ def create_wave_function_collapse_maze(width, height, timeout=30):
 
     # Ensure borders are walls
     maze[0, :] = maze[-1, :] = maze[:, 0] = maze[:, -1] = 1
+
+    elapsed_time = time.time() - start_time
+    if elapsed_time > timeout:
+        print(
+            f"Warning: Wave Function Collapse maze generation exceeded timeout ({elapsed_time:.2f}s > {timeout}s)"
+        )
+
     return maze
 
 
