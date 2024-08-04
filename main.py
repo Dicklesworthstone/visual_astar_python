@@ -467,21 +467,24 @@ def create_fractal_maze(width, height, min_size=None):
         if w <= min_size or h <= min_size:
             return
 
-        if random.random() < 0.5:
-            divide_horizontally = w > h
-        else:
-            divide_horizontally = random.choice([True, False])
+        divide_horizontally = (
+            w > h if random.random() < 0.5 else random.choice([True, False])
+        )
 
         if divide_horizontally:
+            if w <= 2 * min_size:
+                return
             divide_at = random.randint(x + min_size, x + w - min_size)
-            maze[:, divide_at] = 1
+            maze[y : y + h, divide_at] = 1
             opening = random.randint(y, y + h - 1)
             maze[opening, divide_at] = 0
             recursive_divide(x, y, divide_at - x, h)
             recursive_divide(divide_at + 1, y, x + w - divide_at - 1, h)
         else:
+            if h <= 2 * min_size:
+                return
             divide_at = random.randint(y + min_size, y + h - min_size)
-            maze[divide_at, :] = 1
+            maze[divide_at, x : x + w] = 1
             opening = random.randint(x, x + w - 1)
             maze[divide_at, opening] = 0
             recursive_divide(x, y, w, divide_at - y)
