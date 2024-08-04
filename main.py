@@ -1031,6 +1031,19 @@ def find_min_distance_neighbor(neighbors, start_x, start_y):
 
 
 @nb.jit
+def ensure_connectivity(maze, start, goal):
+    path = a_star(start, goal, maze)
+    if goal not in path:
+        current = goal
+        while current != start:
+            x, y = current
+            maze[y, x] = 0
+            neighbors = get_neighbors(x, y, maze.shape)
+            current = find_min_distance_neighbor(neighbors, start[0], start[1])
+    return maze
+
+
+@nb.jit
 def smart_hole_puncher(maze, start, goal):
     path = a_star(start, goal, maze)
     if goal not in path:
@@ -1365,6 +1378,7 @@ def generate_solvable_maze(
 
             # Apply smart hole puncher even if not initially solvable
             maze, success = smart_hole_puncher(maze, start, goal)
+            maze = ensure_connectivity(maze, start, goal)
             if success:
                 is_solvable = is_maze_solvable(maze, start, goal)
                 if is_solvable:
@@ -1375,6 +1389,19 @@ def generate_solvable_maze(
 
     print(f"Failed to generate a solvable maze after {max_attempts} attempts.")
     return None, None, None
+
+
+@nb.jit(nopython=True)
+def prepare_maze_rgba(maze, wall_color_rgba, floor_color_rgba):
+    height, width = maze.shape
+    maze_rgba = np.zeros((height, width, 4), dtype=np.float32)
+    for y in range(height):
+        for x in range(width):
+            if maze[y, x] == 1:
+                maze_rgba[y, x] = wall_color_rgba
+            else:
+                maze_rgba[y, x] = floor_color_rgba
+    return maze_rgba
 
 
 def generate_and_save_frame(
@@ -1396,15 +1423,7 @@ def generate_and_save_frame(
     output_folder,
     frame_format,
 ):
-    @nb.jit
-    def prepare_maze_rgba(maze, wall_color_rgba, floor_color_rgba):
-        colored_maze = np.where(maze == 1, 1, 0)
-        maze_rgba = np.zeros((*colored_maze.shape, 4), dtype=np.float32)
-        maze_rgba[colored_maze == 1] = wall_color_rgba
-        maze_rgba[colored_maze == 0] = floor_color_rgba
-        return maze_rgba
-
-    @nb.jit
+    @nb.jit(nopython=True)
     def prepare_exploration_map(exploration_order, frame, GRID_SIZE):
         exploration_map = np.zeros((GRID_SIZE, GRID_SIZE), dtype=np.float32)
         for idx, (x, y) in enumerate(exploration_order[:frame]):
