@@ -1145,7 +1145,7 @@ def get_ffmpeg_params(num_cores):
         "-crf",
         "23",
         "-x265-params",
-        f"frame-threads={num_cores}:pools=none",
+        "frame-threads=3:pools=none",
         "-movflags",
         "+faststart",
     ]
