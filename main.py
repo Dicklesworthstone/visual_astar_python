@@ -1695,10 +1695,10 @@ def remove_old_empty_directories(base_folder="maze_animations", age_limit_hours=
 
 if __name__ == "__main__":
     num_animations = 1  # Set this to the desired number of animations to generate
-    GRID_SIZE = 351  # Resolution of the maze grid
+    GRID_SIZE = 51  # Resolution of the maze grid
     num_problems = 2  # Number of mazes to show side by side in each animation
-    DPI = 300  # DPI for the animation
-    FPS = 60  # FPS for the animation
+    DPI = 600  # DPI for the animation
+    FPS = 10  # FPS for the animation
     save_as_frames = 1  # Set this to 1 to save frames as individual images in a generated sub-folder; 0 to save as a single video
     asyncio.run(
         run_complex_examples(
