@@ -1288,11 +1288,11 @@ async def run_complex_examples(
             "-c:v",
             "libx265",
             "-preset",
-            "slow",
+            "medium",
             "-crf",
-            "18",
+            "25",
             "-x265-params",
-            "frame-threads=3:numa-pools=48:wpp=1:pmode=1:pme=1:bframes=8:b-adapt=2:rc-lookahead=60",
+            "frame-threads=5:numa-pools=36:wpp=1:pmode=1:pme=1:bframes=8:b-adapt=2:rc-lookahead=60",
             "-movflags",
             "+faststart",
         ]
@@ -1325,9 +1325,9 @@ async def run_complex_examples(
 
 
 if __name__ == "__main__":
-    num_animations = 10  # Set this to the desired number of animations
+    num_animations = 1  # Set this to the desired number of animations
     GRID_SIZE = 91  # Resolution of the maze grid
     num_problems = 2  # Number of mazes to show side by side in each animation
-    DPI = 50  # DPI for the animation
+    DPI = 150  # DPI for the animation
     FPS = 60  # FPS for the animation
     asyncio.run(run_complex_examples(num_animations, GRID_SIZE, num_problems, DPI, FPS))
