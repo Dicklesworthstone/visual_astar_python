@@ -431,7 +431,11 @@ def create_dla_maze(width, height):
     seed_positions = np.random.randint(
         1, min(width - 1, height - 1), size=(num_seeds, 2)
     )
-    maze[seed_positions[:, 1], seed_positions[:, 0]] = 1
+
+    # Use a loop instead of advanced indexing
+    for i in range(num_seeds):
+        y, x = seed_positions[i]
+        maze[y, x] = 1
 
     num_particles = np.random.randint(width * height // 16, width * height // 8)
     directions = np.array([(0, 1), (1, 0), (0, -1), (-1, 0)])
@@ -860,7 +864,6 @@ def create_cellular_automaton_maze(width, height):
     return maze
 
 
-@nb.jit(nopython=True)
 def create_fourier_maze_core(width, height):
     noise = np.random.rand(height, width)
     fft_noise = np.fft.fft2(noise)
