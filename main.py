@@ -21,6 +21,9 @@ from numpy.fft import fft2, ifft2
 from tqdm import tqdm
 from PIL import Image
 
+# Add this line to switch to a non-interactive backend
+plt.switch_backend('Agg')
+
 # Constants for integer coordinate encoding
 BITS_PER_COORDINATE = int(math.floor(math.log2((1 << 63) - 1) / 2))
 
