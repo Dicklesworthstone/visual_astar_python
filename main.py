@@ -1019,6 +1019,18 @@ def manhattan_distance_to_start(start_x, start_y, point):
 
 
 @nb.jit
+def find_min_distance_neighbor(neighbors, start_x, start_y):
+    min_distance = float("inf")
+    min_neighbor = None
+    for neighbor in neighbors:
+        distance = manhattan_distance_to_start(start_x, start_y, neighbor)
+        if distance < min_distance:
+            min_distance = distance
+            min_neighbor = neighbor
+    return min_neighbor
+
+
+@nb.jit
 def smart_hole_puncher(maze, start, goal):
     path = a_star(start, goal, maze)
     if goal not in path:
@@ -1029,10 +1041,7 @@ def smart_hole_puncher(maze, start, goal):
             if maze[y, x] == 1:
                 maze[y, x] = 0
             neighbors = get_neighbors(x, y, maze.shape)
-            next_step = min(
-                neighbors,
-                key=lambda n: manhattan_distance_to_start(start_x, start_y, n),
-            )
+            next_step = find_min_distance_neighbor(neighbors, start_x, start_y)
             current = next_step
 
     return maze, True
