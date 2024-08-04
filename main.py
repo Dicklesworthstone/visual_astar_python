@@ -818,7 +818,8 @@ def create_artistic_maze(width, height):
     for _ in range(np.random.randint(3, 8)):
         x, y = np.random.randint(0, width - 1), np.random.randint(0, height - 1)
         radius = np.random.randint(5, 20)
-        splatter = disk((radius, radius), radius)
+        # Fix: Pass only the radius to disk function
+        splatter = disk(radius)
         x_start, y_start = max(0, x - radius), max(0, y - radius)
         x_end, y_end = min(width, x + radius + 1), min(height, y + radius + 1)
         canvas_section = canvas[y_start:y_end, x_start:x_end]
