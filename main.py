@@ -11,6 +11,7 @@ import concurrent.futures
 from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 import numpy as np
+import numba as nb
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.animation import FuncAnimation, FFMpegWriter
@@ -25,6 +26,7 @@ from tqdm import tqdm
 from PIL import Image
 import requests
 from matplotlib import font_manager
+from heapq import heappush, heappop
 
 # Add this line to switch to a non-interactive backend
 plt.switch_backend("Agg")
@@ -162,10 +164,12 @@ class EmptyQueueError(Exception):
     pass
 
 
+@nb.jit
 def encode_integer_coordinates(x, y):
     return (x & ((1 << BITS_PER_COORDINATE) - 1)) | (y << BITS_PER_COORDINATE)
 
 
+@nb.jit
 def decode_integer_coordinates(value):
     mask = (1 << BITS_PER_COORDINATE) - 1
     x = value & mask
@@ -173,6 +177,7 @@ def decode_integer_coordinates(value):
     return x, y
 
 
+@nb.jit
 def float_to_int(f):
     significand, exponent = math.frexp(f)
     significand = int(significand * (1 << BITS_PER_FLOAT_SIGNIFICAND))
@@ -183,6 +188,7 @@ def float_to_int(f):
     return result if f >= 0 else -result
 
 
+@nb.jit
 def int_to_float(i):
     v = abs(i)
     significand = v & ((1 << BITS_PER_FLOAT_SIGNIFICAND) - 1)
@@ -193,12 +199,14 @@ def int_to_float(i):
     ) * (1 if i >= 0 else -1)
 
 
+@nb.jit
 def encode_float_coordinates(x, y):
     x_int = float_to_int(x)
     y_int = float_to_int(y)
     return encode_integer_coordinates(x_int, y_int)
 
 
+@nb.jit
 def decode_float_coordinates(value):
     x_int, y_int = decode_integer_coordinates(value)
     x = int_to_float(x_int)
@@ -206,23 +214,28 @@ def decode_float_coordinates(value):
     return x, y
 
 
+@nb.jit
 def make_row_major_indexer(width, node_width=1, node_height=1):
-    return lambda x, y: (y // node_height) * width + (x // node_width)
+    def indexer(x, y):
+        return (y // node_height) * width + (x // node_width)
+
+    return indexer
 
 
+@nb.jit
 def make_column_major_indexer(height, node_width=1, node_height=1):
-    return lambda x, y: (x // node_width) * height + (y // node_height)
+    def indexer(x, y):
+        return (x // node_width) * height + (y // node_height)
+
+    return indexer
 
 
-def goal_reached_exact_p(x, y, goal_x, goal_y):
-    return x == goal_x and y == goal_y
-
-
+@nb.jit
 def make_4_directions_enumerator(
     node_width=1, node_height=1, min_x=0, min_y=0, max_x=None, max_y=None
 ):
-    max_x = max_x if max_x is not None else float("inf")
-    max_y = max_y if max_y is not None else float("inf")
+    max_x = max_x if max_x is not None else np.inf
+    max_y = max_y if max_y is not None else np.inf
 
     def enumerator(x, y, func):
         for dx, dy in [
@@ -239,11 +252,12 @@ def make_4_directions_enumerator(
     return enumerator
 
 
+@nb.jit
 def make_8_directions_enumerator(
     node_width=1, node_height=1, min_x=0, min_y=0, max_x=None, max_y=None
 ):
-    max_x = max_x if max_x is not None else float("inf")
-    max_y = max_y if max_y is not None else float("inf")
+    max_x = max_x if max_x is not None else np.inf
+    max_y = max_y if max_y is not None else np.inf
 
     def enumerator(x, y, func):
         for dx, dy in [
@@ -264,21 +278,32 @@ def make_8_directions_enumerator(
     return enumerator
 
 
+@nb.jit
 def make_manhattan_distance_heuristic(scale_factor=1.0):
-    return lambda x1, y1, x2, y2: scale_factor * (abs(x1 - x2) + abs(y1 - y2))
+    def heuristic(x1, y1, x2, y2):
+        return scale_factor * (abs(x1 - x2) + abs(y1 - y2))
+
+    return heuristic
 
 
+@nb.jit
 def make_octile_distance_heuristic(scale_factor=1.0):
     sqrt2 = math.sqrt(2)
-    return lambda x1, y1, x2, y2: scale_factor * (
-        min(abs(x1 - x2), abs(y1 - y2)) * sqrt2 + abs(abs(x1 - x2) - abs(y1 - y2))
-    )
+
+    def heuristic(x1, y1, x2, y2):
+        return scale_factor * (
+            min(abs(x1 - x2), abs(y1 - y2)) * sqrt2 + abs(abs(x1 - x2) - abs(y1 - y2))
+        )
+
+    return heuristic
 
 
+@nb.jit
 def make_euclidean_distance_heuristic(scale_factor=1.0):
-    return lambda x1, y1, x2, y2: scale_factor * math.sqrt(
-        (x1 - x2) ** 2 + (y1 - y2) ** 2
-    )
+    def heuristic(x1, y1, x2, y2):
+        return scale_factor * math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
+
+    return heuristic
 
 
 def define_path_finder(
@@ -298,20 +323,18 @@ def define_path_finder(
     path_processor=lambda x, y: None,
     path_finalizer=lambda: True,
 ):
-    def path_finder(start_x, start_y, goal_x, goal_y, **params):
-        cost_so_far = [float("nan")] * world_size
-        came_from = [-1] * world_size
-        path = [-1] * world_size
-
-        frontier = PriorityQueue()
-
+    @nb.jit
+    def path_finder_core(
+        start_x, start_y, goal_x, goal_y, cost_so_far, came_from, path
+    ):
+        frontier = []  # We'll use a list as a simple priority queue
+        heappush(frontier, (0.0, coordinate_encoder(start_x, start_y)))
         start_index = indexer(start_x, start_y)
         goal_index = indexer(goal_x, goal_y)
-        frontier.insert(coordinate_encoder(start_x, start_y), 0.0)
         cost_so_far[start_index] = 0.0
 
-        while not frontier.is_empty():
-            current = frontier.pop()
+        while frontier:
+            _, current = heappop(frontier)
             current_x, current_y = coordinate_decoder(current)
             current_index = indexer(current_x, current_y)
 
@@ -329,15 +352,13 @@ def define_path_finder(
                 ):
                     cost_so_far[next_index] = new_cost
                     came_from[next_index] = current
-                    frontier.insert(
-                        coordinate_encoder(next_x, next_y),
-                        new_cost + heuristic_cost(next_x, next_y, goal_x, goal_y),
-                    )
+                    priority = new_cost + heuristic_cost(next_x, next_y, goal_x, goal_y)
+                    heappush(frontier, (priority, coordinate_encoder(next_x, next_y)))
 
             neighbor_enumerator(current_x, current_y, process_neighbor)
 
-        if came_from[goal_index] == -1:
-            return None
+        if math.isnan(cost_so_far[goal_index]):
+            return 0  # Path not found
 
         length = 0
         current = goal_index
@@ -348,6 +369,20 @@ def define_path_finder(
             current = indexer(current_x, current_y)
         path[length] = start_index
         length += 1
+
+        return length
+
+    def path_finder(start_x, start_y, goal_x, goal_y, **params):
+        cost_so_far = np.full(world_size, np.nan)
+        came_from = np.full(world_size, -1, dtype=np.int64)
+        path = np.full(world_size, -1, dtype=np.int64)
+
+        length = path_finder_core(
+            start_x, start_y, goal_x, goal_y, cost_so_far, came_from, path
+        )
+
+        if length == 0:
+            return None
 
         path_initiator(length)
         for i in range(length - 1, -1, -1):
@@ -360,14 +395,15 @@ def define_path_finder(
     return path_finder
 
 
+@nb.jit
 def is_maze_solvable(maze, start, goal, max_iterations=100000):
-    queue = deque([start])
-    visited = set([start])
+    queue = [(start[0], start[1])]
+    visited = set([(start[0], start[1])])
     iterations = 0
 
     while queue and iterations < max_iterations:
         iterations += 1
-        x, y = queue.popleft()
+        x, y = queue.pop(0)
 
         if (x, y) == goal:
             return True
@@ -387,7 +423,7 @@ def is_maze_solvable(maze, start, goal, max_iterations=100000):
 
 
 def create_dla_maze(width, height):
-    maze = np.zeros((height, width), dtype=int)
+    maze = np.zeros((height, width), dtype=np.int32)
     maze[0, :] = maze[-1, :] = maze[:, 0] = maze[:, -1] = 1
 
     num_seeds = random.randint(
@@ -440,39 +476,33 @@ def create_game_of_life_maze(width, height):
                         new_maze[y, x] = 1
         maze = new_maze
 
-        if not np.all(np.logical_or(maze == 0, maze == 1)):
-            print("Warning: Maze contains values other than 0 and 1")
-            print("Unique values in maze:", np.unique(maze))
-            maze = np.round(maze).astype(int)  # Round to nearest integer as a fallback
-    return maze
+    return maze.astype(np.int32)
 
 
 def create_one_dim_automata_maze(width, height):
-    maze = np.zeros((height, width), dtype=int)
+    maze = np.zeros((height, width), dtype=np.int32)
     maze[0] = np.random.choice([0, 1], size=width)
     maze[0, 0] = maze[0, -1] = 1
 
     rule_number = random.randint(0, 255)
-    rule = {
-        (a, b, c): (rule_number >> (a * 4 + b * 2 + c)) & 1
-        for a in (0, 1)
-        for b in (0, 1)
-        for c in (0, 1)
-    }
+    rule = np.zeros((2, 2, 2), dtype=np.int32)
+    for i in range(8):
+        rule[i // 4, (i % 4) // 2, i % 2] = (rule_number >> i) & 1
 
     for y in range(1, height):
         for x in range(width):
             left = maze[y - 1, (x - 1) % width]
             center = maze[y - 1, x]
             right = maze[y - 1, (x + 1) % width]
-            maze[y, x] = rule[(left, center, right)]
+            maze[y, x] = rule[left, center, right]
 
     maze[-1, :] = maze[:, 0] = maze[:, -1] = 1
     return maze
 
 
+@nb.jit
 def create_langtons_ant_maze(width, height):
-    maze = np.zeros((height, width), dtype=int)
+    maze = np.zeros((height, width), dtype=np.int32)
     maze[0, :] = maze[-1, :] = maze[:, 0] = maze[:, -1] = 1
 
     ant_x, ant_y = random.randint(1, width - 2), random.randint(1, height - 2)
@@ -487,13 +517,13 @@ def create_langtons_ant_maze(width, height):
             ant_direction = (ant_direction - 1) % 4
 
         if ant_direction == 0:
-            ant_y = max(1, ant_y - 1)  # noqa: E701
+            ant_y = max(1, ant_y - 1)
         elif ant_direction == 1:
-            ant_x = min(width - 2, ant_x + 1)  # noqa: E701
+            ant_x = min(width - 2, ant_x + 1)
         elif ant_direction == 2:
-            ant_y = min(height - 2, ant_y + 1)  # noqa: E701
+            ant_y = min(height - 2, ant_y + 1)
         else:
-            ant_x = max(1, ant_x - 1)  # noqa: E701
+            ant_x = max(1, ant_x - 1)
 
     return maze
 
@@ -503,20 +533,15 @@ def create_voronoi_maze(width, height):
     points = np.random.rand(num_points, 2) * [width, height]
     vor = Voronoi(points)
 
-    maze = np.ones((height, width), dtype=int)
-    for simplex in vor.ridge_vertices:
-        if -1 not in simplex:
-            p1, p2 = vor.vertices[simplex]
-            rr, cc = line(int(p1[1]), int(p1[0]), int(p2[1]), int(p2[0]))
-            rr = np.clip(rr, 0, height - 1)
-            cc = np.clip(cc, 0, width - 1)
-            maze[rr, cc] = 0
+    maze = np.ones((height, width), dtype=np.int32)
+
+    maze = draw_lines(maze, vor.vertices, vor.ridge_vertices)
 
     # Apply erosion to create wider passages
     maze = binary_erosion(maze, np.ones((3, 3)))
 
     # Skeletonize to thin the passages
-    maze = skeletonize(1 - maze).astype(int)
+    maze = skeletonize(1 - maze).astype(np.int32)
     maze = 1 - maze
 
     # Ensure borders are walls
@@ -525,35 +550,36 @@ def create_voronoi_maze(width, height):
     return maze
 
 
+@nb.jit
+def recursive_divide(maze, x, y, w, h, min_size=4):
+    if w <= min_size or h <= min_size:
+        return
+
+    # Randomly decide whether to divide horizontally or vertically
+    if w > h:
+        divide_horizontally = np.random.random() < 0.8
+    else:
+        divide_horizontally = np.random.random() < 0.2
+
+    if divide_horizontally:
+        divide_at = np.random.randint(y + 1, y + h - 1)
+        maze[divide_at, x : x + w] = 1
+        opening = np.random.randint(x, x + w)
+        maze[divide_at, opening] = 0
+        recursive_divide(maze, x, y, w, divide_at - y, min_size)
+        recursive_divide(maze, x, divide_at + 1, w, y + h - divide_at - 1, min_size)
+    else:
+        divide_at = np.random.randint(x + 1, x + w - 1)
+        maze[y : y + h, divide_at] = 1
+        opening = np.random.randint(y, y + h)
+        maze[opening, divide_at] = 0
+        recursive_divide(maze, x, y, divide_at - x, h, min_size)
+        recursive_divide(maze, divide_at + 1, y, x + w - divide_at - 1, h, min_size)
+
+
 def create_fractal_maze(width, height, min_size=4):
-    maze = np.zeros((height, width), dtype=int)
-
-    def recursive_divide(x, y, w, h):
-        if w <= min_size or h <= min_size:
-            return
-
-        # Randomly decide whether to divide horizontally or vertically
-        if w > h:
-            divide_horizontally = np.random.choice([True, False], p=[0.8, 0.2])
-        else:
-            divide_horizontally = np.random.choice([True, False], p=[0.2, 0.8])
-
-        if divide_horizontally:
-            divide_at = np.random.randint(y + 1, y + h - 1)
-            maze[divide_at, x : x + w] = 1
-            opening = np.random.randint(x, x + w)
-            maze[divide_at, opening] = 0
-            recursive_divide(x, y, w, divide_at - y)
-            recursive_divide(x, divide_at + 1, w, y + h - divide_at - 1)
-        else:
-            divide_at = np.random.randint(x + 1, x + w - 1)
-            maze[y : y + h, divide_at] = 1
-            opening = np.random.randint(y, y + h)
-            maze[opening, divide_at] = 0
-            recursive_divide(x, y, divide_at - x, h)
-            recursive_divide(divide_at + 1, y, x + w - divide_at - 1, h)
-
-    recursive_divide(0, 0, width, height)
+    maze = np.zeros((height, width), dtype=np.int32)
+    recursive_divide(maze, 0, 0, width, height, min_size)
     return maze
 
 
@@ -572,36 +598,35 @@ def create_maze_from_image(width, height):
     return maze
 
 
-def create_wave_function_collapse_maze(width, height, timeout=30):
-    tiles = {
-        0: {"up": [0, 2], "right": [0, 1], "down": [0, 2], "left": [0, 1]},  # Empty
-        1: {"up": [1], "right": [1], "down": [1], "left": [1]},  # Wall
-        2: {"up": [2], "right": [2], "down": [2], "left": [2]},  # Special
-    }
+def get_valid_tiles(maze, x, y, width, height, tiles):
+    valid = np.ones(3, dtype=np.bool_)
+    for dx, dy, direction in [
+        (0, -1, 0),
+        (1, 0, 1),
+        (0, 1, 2),
+        (-1, 0, 3),
+    ]:
+        nx, ny = x + dx, y + dy
+        if 0 <= nx < width and 0 <= ny < height and maze[ny, nx] != -1:
+            valid &= tiles[maze[ny, nx]][direction]
+    return np.where(valid)[0]
 
-    def get_valid_tiles(x, y):
-        valid = set(tiles.keys())
-        for dx, dy, direction in [
-            (0, -1, "down"),
-            (1, 0, "left"),
-            (0, 1, "up"),
-            (-1, 0, "right"),
-        ]:
-            nx, ny = x + dx, y + dy
-            if 0 <= nx < width and 0 <= ny < height and maze[ny, nx] != -1:
-                valid &= set(tiles[maze[ny, nx]][direction])
-        return list(valid)
 
-    maze = np.full((height, width), -1, dtype=int)
-    stack = [(random.randint(1, width - 2), random.randint(1, height - 2))]
+def create_wave_function_collapse_maze_core(width, height, tiles, timeout):
+    maze = np.full((height, width), -1, dtype=np.int32)
+    stack = [(np.random.randint(1, width - 2), np.random.randint(1, height - 2))]
     start_time = time.time()
 
     while stack and time.time() - start_time < timeout:
-        x, y = stack.pop(random.randint(0, len(stack) - 1))
+        idx = np.random.randint(0, len(stack))
+        x, y = stack[idx]
+        stack[idx] = stack[-1]
+        stack.pop()
+
         if maze[y, x] == -1:
-            valid_tiles = get_valid_tiles(x, y)
-            if valid_tiles:
-                maze[y, x] = random.choice(valid_tiles)
+            valid_tiles = get_valid_tiles(maze, x, y, width, height, tiles)
+            if len(valid_tiles) > 0:
+                maze[y, x] = np.random.choice(valid_tiles)
                 for dx, dy in [(0, -1), (1, 0), (0, 1), (-1, 0)]:
                     nx, ny = x + dx, y + dy
                     if (
@@ -611,26 +636,40 @@ def create_wave_function_collapse_maze(width, height, timeout=30):
                     ):
                         stack.append((nx, ny))
 
+    return maze
+
+
+def create_wave_function_collapse_maze(width, height, timeout=30):
+    tiles = np.array(
+        [
+            [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]],  # Empty
+            [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],  # Wall
+            [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],  # Special
+        ],
+        dtype=np.bool_,
+    )
+
+    maze = create_wave_function_collapse_maze_core(width, height, tiles, timeout)
+
     # Fill any remaining -1 cells with random valid tiles
     for y in range(height):
         for x in range(width):
             if maze[y, x] == -1:
-                valid_tiles = get_valid_tiles(x, y)
-                maze[y, x] = random.choice(valid_tiles) if valid_tiles else 0
+                valid_tiles = get_valid_tiles(maze, x, y, width, height, tiles)
+                maze[y, x] = (
+                    np.random.choice(valid_tiles) if len(valid_tiles) > 0 else 0
+                )
 
     # Ensure borders are walls
     maze[0, :] = maze[-1, :] = maze[:, 0] = maze[:, -1] = 1
-
-    print(
-        f"Wave function collapse maze generation took {time.time() - start_time:.2f} seconds"
-    )
     return maze
 
 
+@nb.jit
 def create_growing_tree_maze(width, height):
-    maze = np.ones((height, width), dtype=int)
+    maze = [[1 for _ in range(width)] for _ in range(height)]
     stack = [(1, 1)]
-    maze[1, 1] = 0
+    maze[1][1] = 0
 
     while stack:
         if random.random() < 0.5:
@@ -644,38 +683,41 @@ def create_growing_tree_maze(width, height):
 
         for dx, dy in directions:
             nx, ny = x + dx, y + dy
-            if 0 < nx < width - 1 and 0 < ny < height - 1 and maze[ny, nx] == 1:
-                maze[ny, nx] = 0
+            if 0 < nx < width - 1 and 0 < ny < height - 1 and maze[ny][nx] == 1:
+                maze[ny][nx] = 0
                 stack.append((nx, ny))
 
     return maze
 
 
 def create_terrain_based_maze(width, height):
-    scale = random.uniform(0.05, 0.1)
-    octaves = random.randint(4, 6)
-    persistence = random.uniform(0.5, 0.7)
-    lacunarity = random.uniform(2.0, 2.5)
+    scale = np.random.uniform(0.05, 0.1)
+    octaves = np.random.randint(4, 6)
+    persistence = np.random.uniform(0.5, 0.7)
+    lacunarity = np.random.uniform(2.0, 2.5)
 
-    terrain = np.zeros((height, width))
-    for y in range(height):
-        for x in range(width):
-            terrain[y, x] = snoise2(
-                x * scale,
-                y * scale,
-                octaves=octaves,
-                persistence=persistence,
-                lacunarity=lacunarity,
-            )
+    def generate_terrain(width, height, scale, octaves, persistence, lacunarity):
+        terrain = np.zeros((height, width), dtype=np.float32)
+        for y in range(height):
+            for x in range(width):
+                terrain[y, x] = snoise2(
+                    x * scale,
+                    y * scale,
+                    octaves=octaves,
+                    persistence=persistence,
+                    lacunarity=lacunarity,
+                )
+        return terrain
 
+    terrain = generate_terrain(width, height, scale, octaves, persistence, lacunarity)
     terrain = (terrain - terrain.min()) / (terrain.max() - terrain.min())
-    maze = (terrain > np.percentile(terrain, 60)).astype(int)
+    maze = (terrain > np.percentile(terrain, 60)).astype(np.int32)
 
     # Apply erosion to create wider passages
     maze = binary_erosion(maze, np.ones((3, 3)))
 
     # Skeletonize to thin the passages
-    maze = skeletonize(1 - maze).astype(int)
+    maze = skeletonize(1 - maze).astype(np.int32)
     maze = 1 - maze
 
     # Ensure borders are walls
@@ -685,31 +727,27 @@ def create_terrain_based_maze(width, height):
 
 
 def create_musicalized_maze(width, height):
-    # Generate a "musical" maze based on harmonic patterns
     frequencies = np.linspace(1, 10, num=width)
     time = np.linspace(0, 10, num=height)
     t, f = np.meshgrid(time, frequencies)
 
-    # Create harmonic patterns
     harmonic1 = np.sin(2 * np.pi * f * t)
     harmonic2 = np.sin(3 * np.pi * f * t)
     harmonic3 = np.sin(5 * np.pi * f * t)
 
-    # Combine harmonics with random weights
     combined = (
         np.random.random() * harmonic1
         + np.random.random() * harmonic2
         + np.random.random() * harmonic3
     )
 
-    # Normalize and threshold
     combined = (combined - combined.min()) / (combined.max() - combined.min())
-    threshold = np.random.uniform(0.3, 0.7)  # Increased range for more variety
-    maze = (combined > threshold).astype(int)
+    threshold = np.random.uniform(0.3, 0.7)
+    maze = (combined > threshold).astype(np.int32)
 
     # Apply binary dilation to create thicker walls
-    structure = generate_binary_structure(2, 2)
-    maze = binary_dilation(maze, structure=structure).astype(int)
+    structure = np.ones((3, 3), dtype=np.int32)
+    maze = binary_dilation(maze, structure=structure).astype(np.int32)
 
     # Ensure borders are walls
     maze[0, :] = maze[-1, :] = maze[:, 0] = maze[:, -1] = 1
@@ -732,13 +770,13 @@ def create_quantum_inspired_maze(width, height):
     prob_density = (prob_density - prob_density.min()) / (
         prob_density.max() - prob_density.min()
     )
-    maze = (prob_density > np.percentile(prob_density, 70)).astype(int)
+    maze = (prob_density > np.percentile(prob_density, 70)).astype(np.int32)
 
     # Apply erosion to create wider passages
     maze = binary_erosion(maze, np.ones((3, 3)))
 
     # Skeletonize to thin the passages
-    maze = skeletonize(1 - maze).astype(int)
+    maze = skeletonize(1 - maze).astype(np.int32)
     maze = 1 - maze
 
     # Ensure borders are walls
@@ -748,25 +786,27 @@ def create_quantum_inspired_maze(width, height):
 
 
 def create_artistic_maze(width, height):
-    # Generate a maze inspired by artistic techniques
-    canvas = np.zeros((height, width))
+    canvas = np.zeros((height, width), dtype=np.int32)
 
-    # Add random "brush strokes"
-    for _ in range(random.randint(5, 15)):
-        x, y = random.randint(0, width - 1), random.randint(0, height - 1)
-        length = random.randint(10, max(width, height) // 2)
-        angle = random.uniform(0, 2 * np.pi)
-        dx, dy = length * np.cos(angle), length * np.sin(angle)
-        rr, cc = np.linspace(x, x + dx, num=100), np.linspace(y, y + dy, num=100)
-        rr = np.clip(rr.astype(int), 0, width - 1)
-        cc = np.clip(cc.astype(int), 0, height - 1)
-        canvas[cc, rr] = 1
+    def add_brush_strokes(canvas, width, height):
+        for _ in range(np.random.randint(5, 15)):
+            x, y = np.random.randint(0, width - 1), np.random.randint(0, height - 1)
+            length = np.random.randint(10, max(width, height) // 2)
+            angle = np.random.uniform(0, 2 * np.pi)
+            dx, dy = length * np.cos(angle), length * np.sin(angle)
+            rr, cc = np.linspace(x, x + dx, num=100), np.linspace(y, y + dy, num=100)
+            rr = np.clip(rr.astype(np.int32), 0, width - 1)
+            cc = np.clip(cc.astype(np.int32), 0, height - 1)
+            canvas[cc, rr] = 1
+        return canvas
+
+    canvas = add_brush_strokes(canvas, width, height)
 
     # Add random "splatters"
-    for _ in range(random.randint(3, 8)):
-        x, y = random.randint(0, width - 1), random.randint(0, height - 1)
-        radius = random.randint(5, 20)
-        splatter = disk(radius)
+    for _ in range(np.random.randint(3, 8)):
+        x, y = np.random.randint(0, width - 1), np.random.randint(0, height - 1)
+        radius = np.random.randint(5, 20)
+        splatter = disk((radius, radius), radius)
         x_start, y_start = max(0, x - radius), max(0, y - radius)
         x_end, y_end = min(width, x + radius + 1), min(height, y + radius + 1)
         canvas_section = canvas[y_start:y_end, x_start:x_end]
@@ -774,30 +814,30 @@ def create_artistic_maze(width, height):
         canvas_section[splatter_section > 0] = 1
 
     # Apply binary dilation to create thicker strokes
-    structure = np.ones((3, 3))
-    canvas = binary_dilation(canvas, structure=structure).astype(int)
+    structure = np.ones((3, 3), dtype=np.int32)
+    canvas = binary_dilation(canvas, structure=structure).astype(np.int32)
 
     # Thin the result to create maze-like structures
-    maze = thin(canvas).astype(int)
+    maze = thin(canvas).astype(np.int32)
 
     # Ensure borders are walls
     maze[0, :] = maze[-1, :] = maze[:, 0] = maze[:, -1] = 1
     return maze
 
 
+def custom_rule(neighborhood):
+    center = neighborhood[1, 1]
+    neighbors_sum = np.sum(neighborhood) - center
+    if center == 1:
+        return 1 if neighbors_sum in [2, 3, 4] else 0
+    else:
+        return 1 if neighbors_sum in [3, 4, 5] else 0
+
+
 def create_cellular_automaton_maze(width, height):
-    # Generate a maze using a custom cellular automaton rule
     maze = np.random.choice([0, 1], size=(height, width), p=[0.6, 0.4])
 
-    def custom_rule(neighborhood):
-        center = neighborhood[1, 1]
-        neighbors_sum = np.sum(neighborhood) - center
-        if center == 1:
-            return 1 if neighbors_sum in [2, 3, 4] else 0
-        else:
-            return 1 if neighbors_sum in [3, 4, 5] else 0
-
-    for _ in range(random.randint(3, 7)):
+    for _ in range(np.random.randint(3, 7)):
         new_maze = np.zeros_like(maze)
         for i in range(1, height - 1):
             for j in range(1, width - 1):
@@ -808,7 +848,7 @@ def create_cellular_automaton_maze(width, height):
     # Apply convolution to smooth the maze
     kernel = np.ones((3, 3)) / 9
     maze = convolve2d(maze, kernel, mode="same", boundary="wrap")
-    maze = (maze > 0.5).astype(int)
+    maze = (maze > 0.5).astype(np.int32)
 
     # Ensure borders are walls
     maze[0, :] = maze[-1, :] = maze[:, 0] = maze[:, -1] = 1
@@ -822,29 +862,28 @@ def create_fourier_maze(width, height):
     center_y, center_x = height // 2, width // 2
     y, x = np.ogrid[-center_y : height - center_y, -center_x : width - center_x]
 
-    # Create a more complex filter
-    low_freq = (x * x + y * y <= (min(width, height) // 8) ** 2).astype(float)
+    low_freq = (x * x + y * y <= (min(width, height) // 8) ** 2).astype(np.float32)
     mid_freq = (
         (x * x + y * y <= (min(width, height) // 4) ** 2)
         & (x * x + y * y > (min(width, height) // 8) ** 2)
-    ).astype(float)
+    ).astype(np.float32)
     high_freq = (
         (x * x + y * y <= (min(width, height) // 2) ** 2)
         & (x * x + y * y > (min(width, height) // 4) ** 2)
-    ).astype(float)
+    ).astype(np.float32)
 
     mask = 0.6 * low_freq + 0.3 * mid_freq + 0.1 * high_freq
 
     filtered_fft = fft_noise * mask
     maze = np.real(np.fft.ifft2(filtered_fft))
 
-    maze = (maze > np.percentile(maze, 60)).astype(int)
+    maze = (maze > np.percentile(maze, 60)).astype(np.int32)
 
     # Apply erosion to create wider passages
     maze = binary_erosion(maze, np.ones((3, 3)))
 
     # Skeletonize to thin the passages
-    maze = skeletonize(1 - maze).astype(int)
+    maze = skeletonize(1 - maze).astype(np.int32)
     maze = 1 - maze
 
     # Ensure borders are walls
@@ -854,33 +893,29 @@ def create_fourier_maze(width, height):
 
 
 def create_reaction_diffusion_maze(width, height):
-    # Generate a maze using a simplified reaction-diffusion system
     A = np.random.rand(height, width)
     B = np.random.rand(height, width)
 
-    # Define the Laplacian kernel
     laplacian_kernel = np.array([[0.05, 0.2, 0.05], [0.2, -1, 0.2], [0.05, 0.2, 0.05]])
 
     DA, DB = 0.16, 0.08
     f, k = 0.035, 0.065
 
-    for _ in range(20):  # Adjust number of iterations for different patterns
+    for _ in range(20):
         A_lap = convolve2d(A, laplacian_kernel, mode="same", boundary="wrap")
         B_lap = convolve2d(B, laplacian_kernel, mode="same", boundary="wrap")
         A += DA * A_lap - A * B**2 + f * (1 - A)
         B += DB * B_lap + A * B**2 - (k + f) * B
 
-        # Clip values to prevent instability
         A = np.clip(A, 0, 1)
         B = np.clip(B, 0, 1)
 
-    # Normalize and threshold
     maze = (A - A.min()) / (A.max() - A.min())
-    maze = (maze > random.uniform(0.4, 0.6)).astype(int)
+    maze = (maze > np.random.uniform(0.4, 0.6)).astype(np.int32)
 
     # Apply binary dilation to create thicker walls
-    structure = np.ones((3, 3))
-    maze = binary_dilation(maze, structure=structure).astype(int)
+    structure = np.ones((3, 3), dtype=np.int32)
+    maze = binary_dilation(maze, structure=structure).astype(np.int32)
 
     # Ensure borders are walls
     maze[0, :] = maze[-1, :] = maze[:, 0] = maze[:, -1] = 1
@@ -926,38 +961,59 @@ def create_better_maze(width, height, maze_generation_approach):
         )
 
 
+@nb.jit
+def get_neighbors(x, y, maze_shape):
+    neighbors = []
+    for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
+        nx, ny = x + dx, y + dy
+        if 0 <= nx < maze_shape[1] and 0 <= ny < maze_shape[0]:
+            neighbors.append((nx, ny))
+    return neighbors
+
+
+@nb.jit
+def manhattan_distance(a, b):
+    return abs(b[0] - a[0]) + abs(b[1] - a[1])
+
+
+@nb.jit
+def a_star(start, goal, maze):
+    frontier = [(0, start)]
+    came_from = {}
+    cost_so_far = {start: 0}
+
+    while frontier:
+        current = frontier.pop(0)[1]
+
+        if current == goal:
+            break
+
+        for next in get_neighbors(*current, maze.shape):
+            new_cost = cost_so_far[current] + 1
+            if next not in cost_so_far or new_cost < cost_so_far[next]:
+                cost_so_far[next] = new_cost
+                priority = new_cost + manhattan_distance(goal, next)
+                frontier.append((priority, next))
+                frontier.sort(key=lambda x: x[0])
+                came_from[next] = current
+
+    return came_from
+
+
+@nb.jit
 def smart_hole_puncher(maze, start, goal):
-    def get_neighbors(x, y):
-        return [
-            (x + dx, y + dy)
-            for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]
-            if 0 <= x + dx < maze.shape[1] and 0 <= y + dy < maze.shape[0]
-        ]
+    path = a_star(start, goal, maze)
+    if goal not in path:
+        current = goal
+        while current != start:
+            x, y = current
+            if maze[y, x] == 1:
+                maze[y, x] = 0
+            neighbors = get_neighbors(x, y, maze.shape)
+            next_step = min(neighbors, key=lambda n: manhattan_distance(start, n))
+            current = next_step
 
-    def manhattan_distance(a, b):
-        return abs(b[0] - a[0]) + abs(b[1] - a[1])
-
-    def a_star(start, goal):
-        frontier = PriorityQueue()
-        frontier.insert(start, 0)
-        came_from = {}
-        cost_so_far = {start: 0}
-
-        while not frontier.is_empty():
-            current = frontier.pop()
-
-            if current == goal:
-                break
-
-            for next in get_neighbors(*current):
-                new_cost = cost_so_far[current] + 1
-                if next not in cost_so_far or new_cost < cost_so_far[next]:
-                    cost_so_far[next] = new_cost
-                    priority = new_cost + manhattan_distance(goal, next)
-                    frontier.insert(next, priority)
-                    came_from[next] = current
-
-        return came_from
+    return maze, True
 
     path = a_star(start, goal)
     if goal not in path:
@@ -980,8 +1036,8 @@ def set_nice():
         pass  # os.nice() is not available on Windows
 
 
+@nb.jit
 def add_walls(maze, target_percentage):
-    """Add walls to the maze until reaching the target wall percentage."""
     height, width = maze.shape
     total_cells = height * width
     initial_wall_count = np.sum(maze)
@@ -1001,8 +1057,8 @@ def add_walls(maze, target_percentage):
     return maze
 
 
+@nb.jit
 def remove_walls(maze, target_percentage):
-    """Remove walls from the maze until reaching the target wall percentage."""
     height, width = maze.shape
     total_cells = height * width
     initial_wall_count = np.sum(maze)
@@ -1022,6 +1078,7 @@ def remove_walls(maze, target_percentage):
     return maze
 
 
+@nb.jit
 def add_room_separators(maze):
     height, width = maze.shape
     for _ in range(3):  # Add a few separators
@@ -1035,7 +1092,39 @@ def add_room_separators(maze):
 def break_up_large_room(maze, max_percentage, max_iterations=1000):
     height, width = maze.shape
     total_cells = height * width
-    labeled_maze, num_rooms = label(1 - maze, structure=np.ones((3, 3)))
+
+    @nb.jit
+    def process_room(
+        maze, labeled_maze, num_rooms, room_sizes, largest_room, iterations
+    ):
+        y, x = (
+            np.random.choice(np.where(labeled_maze == largest_room)[0]),
+            np.random.choice(np.where(labeled_maze == largest_room)[1]),
+        )
+
+        temp_maze = maze.copy()
+        temp_maze[y, x] = 1
+        temp_labeled, temp_num_rooms = label(1 - temp_maze)
+
+        if temp_num_rooms <= num_rooms:
+            maze[y, x] = 1
+            labeled_maze, num_rooms = label(1 - maze)
+            room_sizes = np.bincount(labeled_maze.flatten())[1:]
+            largest_room = np.argmax(room_sizes) + 1
+
+        iterations += 1
+
+        if iterations % 100 == 0:
+            for _ in range(5):
+                ry, rx = (
+                    np.random.randint(1, height - 1),
+                    np.random.randint(1, width - 1),
+                )
+                maze[ry, rx] = 0
+
+        return maze, labeled_maze, num_rooms, room_sizes, largest_room, iterations
+
+    labeled_maze, num_rooms = label(1 - maze)
     room_sizes = np.bincount(labeled_maze.flatten())[1:]
     largest_room = np.argmax(room_sizes) + 1
 
@@ -1044,34 +1133,11 @@ def break_up_large_room(maze, max_percentage, max_iterations=1000):
         np.max(room_sizes) / (total_cells - np.sum(maze)) > max_percentage
         and iterations < max_iterations
     ):
-        y, x = (
-            np.random.choice(np.where(labeled_maze == largest_room)[0]),
-            np.random.choice(np.where(labeled_maze == largest_room)[1]),
+        maze, labeled_maze, num_rooms, room_sizes, largest_room, iterations = (
+            process_room(
+                maze, labeled_maze, num_rooms, room_sizes, largest_room, iterations
+            )
         )
-
-        # Check if adding a wall here would not disconnect the room
-        temp_maze = maze.copy()
-        temp_maze[y, x] = 1
-        temp_labeled, temp_num_rooms = label(1 - temp_maze, structure=np.ones((3, 3)))
-
-        if (
-            temp_num_rooms <= num_rooms
-        ):  # If it doesn't increase the number of rooms, it's safe to add a wall
-            maze[y, x] = 1
-            labeled_maze, num_rooms = label(1 - maze, structure=np.ones((3, 3)))
-            room_sizes = np.bincount(labeled_maze.flatten())[1:]
-            largest_room = np.argmax(room_sizes) + 1
-
-        iterations += 1
-
-        # Add random openings periodically to prevent complete blockage
-        if iterations % 100 == 0:
-            for _ in range(5):
-                ry, rx = (
-                    np.random.randint(1, height - 1),
-                    np.random.randint(1, width - 1),
-                )
-                maze[ry, rx] = 0
 
     if iterations >= max_iterations:
         print(
@@ -1089,7 +1155,8 @@ def break_up_large_areas(maze, max_area_percentage=0.2):
     print(f"Initial number of areas: {num_areas}")
     print(f"Initial area sizes: {area_sizes}")
 
-    for i, size in enumerate(area_sizes, 1):
+    @nb.jit
+    def process_area(maze, labeled_areas, i, size, total_cells, max_area_percentage):
         if size / total_cells > max_area_percentage:
             print(
                 f"Breaking up area {i} with size {size} ({size/total_cells:.2f} of total)"
@@ -1103,6 +1170,12 @@ def break_up_large_areas(maze, max_area_percentage=0.2):
                 x_offset : x_offset + sub_maze.shape[0],
                 y_offset : y_offset + sub_maze.shape[1],
             ] = sub_maze
+        return maze
+
+    for i, size in enumerate(area_sizes, 1):
+        maze = process_area(
+            maze, labeled_areas, i, size, total_cells, max_area_percentage
+        )
 
     final_labeled_areas, final_num_areas = label(1 - maze)
     final_area_sizes = np.bincount(final_labeled_areas.ravel())[1:]
@@ -1112,12 +1185,11 @@ def break_up_large_areas(maze, max_area_percentage=0.2):
     return maze
 
 
+@nb.jit
 def create_simple_maze(sub_maze):
-    """Simple recursive backtracker maze generation"""
-
     def carve_passages(x, y):
-        directions = [(0, 1), (1, 0), (0, -1), (-1, 0)]
-        random.shuffle(directions)
+        directions = np.array([(0, 1), (1, 0), (0, -1), (-1, 0)])
+        np.random.shuffle(directions)
         for dx, dy in directions:
             nx, ny = x + dx * 2, y + dy * 2
             if (
@@ -1135,44 +1207,63 @@ def create_simple_maze(sub_maze):
     return sub_maze
 
 
-def connect_disconnected_areas(maze):
-    labeled_areas, num_areas = label(1 - maze)
+@nb.njit
+def connect_areas(maze, labeled_areas, num_areas):
     if num_areas > 1:
         for i in range(1, num_areas):
             area1 = np.argwhere(labeled_areas == i)
             area2 = np.argwhere(labeled_areas == i + 1)
-            point1 = area1[np.random.randint(len(area1))]
-            point2 = area2[np.random.randint(len(area2))]
-            path = bresenham_line(point1, point2)
-            for x, y in path:
-                maze[y, x] = 0
+            if len(area1) > 0 and len(area2) > 0:
+                point1 = area1[np.random.randint(len(area1))]
+                point2 = area2[np.random.randint(len(area2))]
+                x1, y1 = point1
+                x2, y2 = point2
+                path = bresenham_line(x1, y1, x2, y2)
+                for x, y in path:
+                    if 0 <= x < maze.shape[1] and 0 <= y < maze.shape[0]:
+                        maze[y, x] = 0
     return maze
 
 
-def bresenham_line(start, end):
-    """Bresenham's Line Algorithm"""
-    x1, y1 = start
-    x2, y2 = end
-    dx = abs(x2 - x1)
-    dy = abs(y2 - y1)
-    sx = 1 if x1 < x2 else -1
-    sy = 1 if y1 < y2 else -1
+def connect_disconnected_areas(maze):
+    labeled_areas, num_areas = label(1 - maze)
+    return connect_areas(maze, labeled_areas, num_areas)
+
+
+@nb.njit
+def bresenham_line(x0, y0, x1, y1):
+    dx = abs(x1 - x0)
+    dy = abs(y1 - y0)
+    sx = 1 if x0 < x1 else -1
+    sy = 1 if y0 < y1 else -1
     err = dx - dy
 
-    path = []
+    line_points = []
     while True:
-        path.append((x1, y1))
-        if x1 == x2 and y1 == y2:
+        line_points.append((x0, y0))
+        if x0 == x1 and y0 == y1:
             break
         e2 = 2 * err
         if e2 > -dy:
             err -= dy
-            x1 += sx
+            x0 += sx
         if e2 < dx:
             err += dx
-            y1 += sy
+            y0 += sy
 
-    return path
+    return line_points
+
+
+@nb.njit
+def draw_lines(maze, vertices, ridge_vertices):
+    for simplex in ridge_vertices:
+        if -1 not in simplex:
+            p1, p2 = vertices[simplex]
+            line_points = bresenham_line(int(p1[1]), int(p1[0]), int(p2[1]), int(p2[0]))
+            for y, x in line_points:
+                if 0 <= y < maze.shape[0] and 0 <= x < maze.shape[1]:
+                    maze[y, x] = 0
+    return maze
 
 
 def validate_and_adjust_maze(maze, maze_generation_approach):
@@ -1191,13 +1282,11 @@ def validate_and_adjust_maze(maze, maze_generation_approach):
     print(f"Initial wall count: {wall_count}")
     print(f"Initial wall percentage: {wall_percentage:.2f}")
 
-    # Ensure connectivity
     labeled_areas, num_areas = label(1 - maze)
     if num_areas > 1:
         print(f"Connecting {num_areas} disconnected areas...")
         maze = connect_disconnected_areas(maze)
 
-    # Adjust wall percentage if needed
     adjustment_factor = 0.05
     if wall_percentage < target_wall_percentage - adjustment_factor:
         print("Wall percentage too low. Adding walls...")
@@ -1289,41 +1378,55 @@ def generate_and_save_frame(
     output_folder,
     frame_format,
 ):
-    # Generate the frame as before
+    @nb.jit
+    def prepare_maze_rgba(maze, wall_color_rgba, floor_color_rgba):
+        colored_maze = np.where(maze == 1, 1, 0)
+        maze_rgba = np.zeros((*colored_maze.shape, 4), dtype=np.float32)
+        maze_rgba[colored_maze == 1] = wall_color_rgba
+        maze_rgba[colored_maze == 0] = floor_color_rgba
+        return maze_rgba
+
+    @nb.jit
+    def prepare_exploration_map(exploration_order, frame, GRID_SIZE):
+        exploration_map = np.zeros((GRID_SIZE, GRID_SIZE), dtype=np.float32)
+        for idx, (x, y) in enumerate(exploration_order[:frame]):
+            exploration_map[y, x] = idx + 1
+        if exploration_map.max() > 0:
+            exploration_map /= exploration_map.max()
+        return exploration_map
+
     fig, axs = plt.subplots(1, len(all_mazes), figsize=(20, 8), dpi=DPI)
     if len(all_mazes) == 1:
         axs = [axs]
+
+    wall_color_rgba = (
+        np.array(
+            [int(wall_color[i : i + 2], 16) for i in (1, 3, 5)] + [255],
+            dtype=np.float32,
+        )
+        / 255
+    )
+    floor_color_rgba = (
+        np.array(
+            [int(floor_color[i : i + 2], 16) for i in (1, 3, 5)] + [255],
+            dtype=np.float32,
+        )
+        / 255
+    )
+
     for i, ax in enumerate(axs):
         ax.clear()
         maze = all_mazes[i]
-        colored_maze = np.where(maze == 1, 1, 0)
-        wall_color_rgba = [
-            int(wall_color[1:3], 16) / 255,
-            int(wall_color[3:5], 16) / 255,
-            int(wall_color[5:7], 16) / 255,
-            1,
-        ]
-        floor_color_rgba = [
-            int(floor_color[1:3], 16) / 255,
-            int(floor_color[3:5], 16) / 255,
-            int(floor_color[5:7], 16) / 255,
-            1,
-        ]
-        maze_rgba = np.zeros((*colored_maze.shape, 4))
-        maze_rgba[colored_maze == 1] = wall_color_rgba
-        maze_rgba[colored_maze == 0] = floor_color_rgba
-
+        maze_rgba = prepare_maze_rgba(maze, wall_color_rgba, floor_color_rgba)
         ax.imshow(maze_rgba)
 
-        exploration_map = np.zeros((GRID_SIZE, GRID_SIZE))
         exploration_length = len(all_exploration_orders[i])
         path_length = len(all_paths[i])
 
         if frame < exploration_length:
-            for idx, (x, y) in enumerate(all_exploration_orders[i][:frame]):
-                exploration_map[y, x] = idx + 1
-            if exploration_map.max() > 0:
-                exploration_map = exploration_map / exploration_map.max()
+            exploration_map = prepare_exploration_map(
+                all_exploration_orders[i], frame, GRID_SIZE
+            )
             ax.imshow(exploration_map, cmap=exploration_cmap, alpha=0.5)
         else:
             path_frame = frame - exploration_length
@@ -1342,7 +1445,6 @@ def generate_and_save_frame(
     plt.tight_layout()
     fig.canvas.draw()
 
-    # Save the frame directly to disk
     frame_filename = os.path.join(output_folder, f"frame_{frame:04d}.{frame_format}")
     plt.savefig(frame_filename)
     plt.close(fig)
@@ -1350,6 +1452,7 @@ def generate_and_save_frame(
     return frame_filename
 
 
+@nb.jit
 def delete_small_files(folder, size_limit_kb=20):
     one_hour_ago = time.time() - 3600
     for filename in os.listdir(folder):
@@ -1364,26 +1467,38 @@ def delete_small_files(folder, size_limit_kb=20):
                 )
 
 
+@nb.jit
+def remove_old_empty_directories(base_folder="maze_animations", age_limit_hours=1):
+    if not os.path.exists(base_folder):
+        return
+
+    current_time = time.time()
+    age_limit_seconds = age_limit_hours * 3600
+
+    for dir_name in os.listdir(base_folder):
+        dir_path = os.path.join(base_folder, dir_name)
+        if os.path.isdir(dir_path):
+            if not os.listdir(dir_path):
+                last_modified_time = os.path.getmtime(dir_path)
+                if (current_time - last_modified_time) > age_limit_seconds:
+                    try:
+                        shutil.rmtree(dir_path)
+                        print(f"Removed empty and old directory: {dir_path}")
+                    except OSError as e:
+                        print(f"Error removing directory {dir_path}: {e}")
+
+
 async def save_animation_async(anim, filepath, writer, DPI):
     await to_thread(anim.save, filepath, writer=writer, dpi=DPI)
 
 
 def create_output_folder(base_folder="maze_animations"):
-    """Create a unique sub-folder in the specified base folder, named with the current datetime."""
-    # Ensure the base output folder exists
     os.makedirs(base_folder, exist_ok=True)
-
-    # Create a unique sub-folder name based on the current datetime
     now = datetime.now()
     date_time = now.strftime("%Y%m%d_%H%M%S")
     animation_folder_name = f"animation_{date_time}"
-
-    # Create the full path for the new sub-folder
     output_folder = os.path.join(base_folder, animation_folder_name)
-
-    # Create the sub-folder
     os.makedirs(output_folder, exist_ok=True)
-
     return output_folder
 
 
@@ -1439,10 +1554,9 @@ async def run_complex_examples(
             max_attempts = 5  # Allow more attempts per problem
 
             while attempts < max_attempts:
-                if override_maze_approach:
-                    maze_generation_approach = override_maze_approach
-                else:
-                    maze_generation_approach = random.choice(maze_generation_approaches)
+                maze_generation_approach = override_maze_approach or random.choice(
+                    maze_generation_approaches
+                )
 
                 print(
                     f"Starting maze generation for problem {i+1} using {maze_generation_approach} approach (attempt {attempts+1})..."
@@ -1455,7 +1569,7 @@ async def run_complex_examples(
                     break
 
                 attempts += 1
-                print(f"Failed to generate a solvable maze. Trying again.")
+                print("Failed to generate a solvable maze. Trying again.")
 
             if maze is None:
                 print(
@@ -1467,18 +1581,14 @@ async def run_complex_examples(
             goal_x, goal_y = goal
             print("Maze generation complete.")
 
-            obstacles = set(
-                (x, y)
-                for y, row in enumerate(maze)
-                for x, cell in enumerate(row)
-                if cell
-            )
-
             exploration_order = []
             path = []
 
-            def custom_path_finder(start_x, start_y, goal_x, goal_y):
+            def optimized_a_star(start, goal, maze):
                 nonlocal exploration_order, path
+                start_x, start_y = start
+                goal_x, goal_y = goal
+
                 frontier = PriorityQueue()
                 frontier.insert(encode_integer_coordinates(start_x, start_y), 0)
                 came_from = {}
@@ -1488,7 +1598,7 @@ async def run_complex_examples(
                     current = frontier.pop()
                     current_x, current_y = decode_integer_coordinates(current)
 
-                    if (current_x, current_y) == (goal_x, goal_y):
+                    if (current_x, current_y) == goal:
                         break
 
                     for dx, dy in [
@@ -1505,13 +1615,13 @@ async def run_complex_examples(
                         if (
                             0 <= next_x < GRID_SIZE
                             and 0 <= next_y < GRID_SIZE
-                            and (next_x, next_y) not in obstacles
+                            and maze[next_y, next_x] == 0
                         ):
                             if abs(dx) == 1 and abs(dy) == 1:
-                                if (current_x + dx, current_y) in obstacles or (
-                                    current_x,
-                                    current_y + dy,
-                                ) in obstacles:
+                                if (
+                                    maze[current_y + dy, current_x] == 1
+                                    or maze[current_y, current_x + dx] == 1
+                                ):
                                     continue
 
                             new_cost = cost_so_far[current] + (
@@ -1535,25 +1645,23 @@ async def run_complex_examples(
                     print(
                         f"No path found from ({start_x}, {start_y}) to ({goal_x}, {goal_y})"
                     )
-                    return False
+                    return None
 
                 path.clear()
                 current = encode_integer_coordinates(goal_x, goal_y)
                 while current != encode_integer_coordinates(start_x, start_y):
                     x, y = decode_integer_coordinates(current)
                     path.append((x, y))
-                    if current not in came_from:
-                        print(f"Path reconstruction failed at ({x}, {y})")
-                        return False
                     current = came_from[current]
                 path.append((start_x, start_y))
                 path.reverse()
 
                 print(f"Path found with length {len(path)}")
-                return True
+                return path
 
             print("Starting pathfinding...")
-            if not custom_path_finder(start_x, start_y, goal_x, goal_y):
+            result = optimized_a_star((start_x, start_y), (goal_x, goal_y), maze)
+            if result is None:
                 print(
                     f"Failed to find a path for problem {i+1}. Skipping visualization for this problem."
                 )
@@ -1666,40 +1774,237 @@ async def run_complex_examples(
             plt.close(fig)
 
 
-def remove_old_empty_directories(base_folder="maze_animations", age_limit_hours=1):
-    # Check if the base folder exists
-    if not os.path.exists(base_folder):
-        return
+def test_a_star_implementations(num_tests=100, grid_size=31):
+    def optimized_a_star(start, goal, maze):
+        start_x, start_y = start
+        goal_x, goal_y = goal
 
-    current_time = time.time()
-    age_limit_seconds = age_limit_hours * 3600
+        frontier = PriorityQueue()
+        frontier.insert(encode_integer_coordinates(start_x, start_y), 0)
+        came_from = {}
+        cost_so_far = {encode_integer_coordinates(start_x, start_y): 0}
 
-    # List all directories in the base folder
-    for dir_name in os.listdir(base_folder):
-        dir_path = os.path.join(base_folder, dir_name)
-        # Check if it's a directory
-        if os.path.isdir(dir_path):
-            # Check if the directory is empty
-            if not os.listdir(dir_path):
-                # Get the last modified time
-                last_modified_time = os.path.getmtime(dir_path)
-                # Check if the directory hasn't been modified for over the specified limit
-                if (current_time - last_modified_time) > age_limit_seconds:
-                    # If empty and old, remove it
-                    try:
-                        shutil.rmtree(dir_path)
-                        print(f"Removed empty and old directory: {dir_path}")
-                    except OSError as e:
-                        print(f"Error removing directory {dir_path}: {e}")
+        while not frontier.is_empty():
+            current = frontier.pop()
+            current_x, current_y = decode_integer_coordinates(current)
+
+            if (current_x, current_y) == goal:
+                break
+
+            for dx, dy in [
+                (0, -1),
+                (0, 1),
+                (-1, 0),
+                (1, 0),
+                (-1, -1),
+                (-1, 1),
+                (1, -1),
+                (1, 1),
+            ]:
+                next_x, next_y = current_x + dx, current_y + dy
+                if (
+                    0 <= next_x < grid_size
+                    and 0 <= next_y < grid_size
+                    and maze[next_y, next_x] == 0
+                ):
+                    if abs(dx) == 1 and abs(dy) == 1:
+                        if (
+                            maze[current_y + dy, current_x] == 1
+                            or maze[current_y, current_x + dx] == 1
+                        ):
+                            continue
+
+                    new_cost = cost_so_far[current] + (
+                        1 if abs(dx) + abs(dy) == 1 else 1.414
+                    )
+                    next_node = encode_integer_coordinates(next_x, next_y)
+
+                    if (
+                        next_node not in cost_so_far
+                        or new_cost < cost_so_far[next_node]
+                    ):
+                        cost_so_far[next_node] = new_cost
+                        priority = new_cost + math.sqrt(
+                            (goal_x - next_x) ** 2 + (goal_y - next_y) ** 2
+                        )
+                        frontier.insert(next_node, priority)
+                        came_from[next_node] = current
+
+        if encode_integer_coordinates(goal_x, goal_y) not in came_from:
+            return None
+
+        path = []
+        current = encode_integer_coordinates(goal_x, goal_y)
+        while current != encode_integer_coordinates(start_x, start_y):
+            x, y = decode_integer_coordinates(current)
+            path.append((x, y))
+            current = came_from[current]
+        path.append((start_x, start_y))
+        path.reverse()
+
+        return path
+
+    def simple_a_star(start, goal, maze):
+        start_x, start_y = start
+        goal_x, goal_y = goal
+
+        exploration_order = []
+        path = []
+        obstacles = set(
+            (x, y) for y, row in enumerate(maze) for x, cell in enumerate(row) if cell
+        )
+
+        frontier = PriorityQueue()
+        frontier.insert(encode_integer_coordinates(start_x, start_y), 0)
+        came_from = {}
+        cost_so_far = {encode_integer_coordinates(start_x, start_y): 0}
+
+        while not frontier.is_empty():
+            current = frontier.pop()
+            current_x, current_y = decode_integer_coordinates(current)
+
+            if (current_x, current_y) == (goal_x, goal_y):
+                break
+
+            for dx, dy in [
+                (0, -1),
+                (0, 1),
+                (-1, 0),
+                (1, 0),
+                (-1, -1),
+                (-1, 1),
+                (1, -1),
+                (1, 1),
+            ]:
+                next_x, next_y = current_x + dx, current_y + dy
+                if (
+                    0 <= next_x < grid_size
+                    and 0 <= next_y < grid_size
+                    and (next_x, next_y) not in obstacles
+                ):
+                    if abs(dx) == 1 and abs(dy) == 1:
+                        if (current_x + dx, current_y) in obstacles or (
+                            current_x,
+                            current_y + dy,
+                        ) in obstacles:
+                            continue
+
+                    new_cost = cost_so_far[current] + (
+                        1 if abs(dx) + abs(dy) == 1 else 1.414
+                    )
+                    next_node = encode_integer_coordinates(next_x, next_y)
+
+                    if (
+                        next_node not in cost_so_far
+                        or new_cost < cost_so_far[next_node]
+                    ):
+                        cost_so_far[next_node] = new_cost
+                        priority = new_cost + math.sqrt(
+                            (goal_x - next_x) ** 2 + (goal_y - next_y) ** 2
+                        )
+                        frontier.insert(next_node, priority)
+                        came_from[next_node] = current
+                        exploration_order.append((next_x, next_y))
+
+        if encode_integer_coordinates(goal_x, goal_y) not in came_from:
+            return None
+
+        current = encode_integer_coordinates(goal_x, goal_y)
+        while current != encode_integer_coordinates(start_x, start_y):
+            x, y = decode_integer_coordinates(current)
+            path.append((x, y))
+            current = came_from[current]
+        path.append((start_x, start_y))
+        path.reverse()
+
+        return path
+
+    def generate_random_maze(size):
+        maze = np.random.choice([0, 1], size=(size, size), p=[0.7, 0.3])
+        maze[0, :] = maze[-1, :] = maze[:, 0] = maze[:, -1] = 1
+        return maze
+
+    def is_valid_path(path, maze):
+        if not path:
+            return False
+        for x, y in path:
+            if maze[y, x] == 1:
+                return False
+        return True
+
+    print(f"Running {num_tests} tests...")
+    optimized_times = []
+    simple_times = []
+    for i in range(num_tests):
+        maze = generate_random_maze(grid_size)
+        start = (random.randint(1, grid_size - 2), random.randint(1, grid_size - 2))
+        goal = (random.randint(1, grid_size - 2), random.randint(1, grid_size - 2))
+
+        while maze[start[1], start[0]] == 1 or maze[goal[1], goal[0]] == 1:
+            start = (random.randint(1, grid_size - 2), random.randint(1, grid_size - 2))
+            goal = (random.randint(1, grid_size - 2), random.randint(1, grid_size - 2))
+
+        # Time the optimized implementation
+        start_time = time.time()
+        optimized_path = optimized_a_star(start, goal, maze)
+        optimized_time = time.time() - start_time
+        optimized_times.append(optimized_time)
+
+        # Time the current implementation
+        start_time = time.time()
+        current_path = simple_a_star(start, goal, maze)
+        simple_time = time.time() - start_time
+        simple_times.append(simple_time)
+
+        if optimized_path is None and current_path is None:
+            print(f"Test {i+1}: Both implementations correctly found no path.")
+        elif optimized_path is None or current_path is None:
+            print(
+                f"Test {i+1}: Mismatch - One implementation found a path, the other didn't."
+            )
+            return False
+        elif len(optimized_path) != len(current_path):
+            print(f"Test {i+1}: Mismatch - Different path lengths.")
+            return False
+        elif not is_valid_path(optimized_path, maze) or not is_valid_path(
+            current_path, maze
+        ):
+            print(f"Test {i+1}: Invalid path detected.")
+            return False
+        else:
+            print(
+                f"Test {i+1}: Both implementations found valid paths of the same length."
+            )
+            print(f"  Optimized time: {optimized_time:.6f} seconds")
+            print(f"  Simple time: {simple_time:.6f} seconds")
+
+    print("\nAll tests passed successfully!")
+
+    # Calculate and print benchmark results
+    avg_optimized_time = sum(optimized_times) / len(optimized_times)
+    avg_simple_time = sum(simple_times) / len(simple_times)
+    speedup = avg_simple_time / avg_optimized_time
+
+    print("\nBenchmark Results:")
+    print(f"Average Optimized A* Time: {avg_optimized_time:.6f} seconds")
+    print(f"Average Simple A* Time: {avg_simple_time:.6f} seconds")
+    print(f"Speedup: {speedup:.2f}x")
+
+    return True
 
 
 if __name__ == "__main__":
-    num_animations = 1  # Set this to the desired number of animations to generate
-    GRID_SIZE = 51  # Resolution of the maze grid
-    num_problems = 2  # Number of mazes to show side by side in each animation
-    DPI = 600  # DPI for the animation
-    FPS = 10  # FPS for the animation
-    save_as_frames = 1  # Set this to 1 to save frames as individual images in a generated sub-folder; 0 to save as a single video
+    use_test = 0
+    if use_test:
+        test_result = test_a_star_implementations(num_tests=20, grid_size=231)
+        print(f"Overall test result: {'Passed' if test_result else 'Failed'}")
+
+    num_animations = 5  # Set this to the desired number of animations to generate
+    GRID_SIZE = 91  # Resolution of the maze grid
+    num_problems = 3  # Number of mazes to show side by side in each animation
+    DPI = 400  # DPI for the animation
+    FPS = 5  # FPS for the animation
+    save_as_frames = 0  # Set this to 1 to save frames as individual images in a generated sub-folder; 0 to save as a single video
     asyncio.run(
         run_complex_examples(
             num_animations, GRID_SIZE, num_problems, DPI, FPS, save_as_frames

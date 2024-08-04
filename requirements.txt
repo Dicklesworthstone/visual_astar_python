@@ -7,3 +7,4 @@ ffmpeg
 ruff
 noise
 requests
+numba
