@@ -21,7 +21,6 @@ from noise import snoise2
 from scipy.ndimage import label, binary_dilation, generate_binary_structure
 from scipy.signal import convolve2d
 from skimage.morphology import thin, disk
-from numpy.fft import fft2, ifft2
 from tqdm import tqdm
 from PIL import Image
 import requests
@@ -1203,10 +1202,10 @@ def validate_and_adjust_maze(maze, maze_generation_approach):
 
     adjustment_factor = 0.02
     if wall_percentage < target_wall_percentage - adjustment_factor:
-        print(f"Wall percentage too low. Adding walls...")
+        print("Wall percentage too low. Adding walls...")
         maze = add_walls(maze, wall_percentage + adjustment_factor)
     elif wall_percentage > target_wall_percentage + adjustment_factor:
-        print(f"Wall percentage too high. Removing walls...")
+        print("Wall percentage too high. Removing walls...")
         maze = remove_walls(maze, wall_percentage - adjustment_factor)
     else:
         print("Wall percentage within acceptable range. No adjustment needed.")
@@ -1227,9 +1226,6 @@ def validate_and_adjust_maze(maze, maze_generation_approach):
 
     labeled_areas, num_areas = label(1 - maze)
     print(f"Number of disconnected areas: {num_areas}")
-
-    print("Sample of adjusted maze (10x10 from top-left corner):")
-    print(maze[:10, :10])
 
     return maze
 
