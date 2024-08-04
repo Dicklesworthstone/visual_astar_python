@@ -1001,69 +1001,162 @@ def delete_small_files(folder, size_limit_kb=25):
 
 def check_cuda_support():
     try:
-        result = subprocess.run(['ffmpeg', '-hide_banner', '-hwaccels'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        return 'cuda' in result.stdout.lower()
-    except Exception:
+        # Check if 'nvcc' is available to confirm the presence of the CUDA toolkit
+        nvcc_result = subprocess.run(
+            ["nvcc", "--version"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if "release" not in nvcc_result.stdout.lower():
+            print("CUDA toolkit is not installed or not available in PATH.")
+            return False
+
+        # Check if the NVIDIA driver is loaded and the necessary libraries are available
+        ldconfig_result = subprocess.run(
+            ["ldconfig", "-p"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if "libcuda.so.1" not in ldconfig_result.stdout:
+            print("NVIDIA driver or libcuda.so.1 is missing.")
+            return False
+
+        # Check available hardware accelerations in FFmpeg
+        hwaccel_result = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-hwaccels"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if "cuda" not in hwaccel_result.stdout.lower():
+            print(
+                "FFmpeg does not list 'cuda' as a supported hardware acceleration method."
+            )
+            return False
+
+        # Verify that 'hevc_nvenc' is among the available encoders
+        encoders_result = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-encoders"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if "hevc_nvenc" not in encoders_result.stdout.lower():
+            print("'hevc_nvenc' encoder not found in FFmpeg encoders.")
+            return False
+
+        return True
+    except FileNotFoundError as e:
+        print(f"Command not found: {e}")
         return False
+    except Exception as e:
+        print(f"Error checking CUDA support: {e}")
+        return False
+
 
 def check_qsv_support():
     try:
-        result = subprocess.run(['ffmpeg', '-hide_banner', '-hwaccels'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        return 'qsv' in result.stdout.lower()
+        result = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-hwaccels"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        return "qsv" in result.stdout.lower()
     except Exception:
         return False
+
 
 def check_amf_support():
     try:
-        result = subprocess.run(['ffmpeg', '-hide_banner', '-hwaccels'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        return 'dxva2' in result.stdout.lower() or 'd3d11va' in result.stdout.lower()
+        result = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-hwaccels"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        return "dxva2" in result.stdout.lower() or "d3d11va" in result.stdout.lower()
     except Exception:
         return False
 
+
 def get_ffmpeg_params(num_cores):
     if check_cuda_support():
+        print("CUDA support detected, using hevc_nvenc for hardware encoding.")
         return [
-            "-threads", str(num_cores),
-            "-c:v", "hevc_nvenc",
-            "-preset", "p7",
-            "-profile:v", "main",
-            "-level:v", "4.1",
-            "-b:v", "5M",
-            "-movflags", "+faststart"
+            "-threads",
+            str(num_cores),
+            "-c:v",
+            "hevc_nvenc",
+            "-preset",
+            "p7",
+            "-profile:v",
+            "main",
+            "-level:v",
+            "4.1",
+            "-b:v",
+            "5M",
+            "-movflags",
+            "+faststart",
         ]
     elif check_qsv_support():
+        print("QSV support detected, using hevc_qsv for hardware encoding.")
         return [
-            "-threads", str(num_cores),
-            "-c:v", "hevc_qsv",
-            "-global_quality", "25",
-            "-preset:v", "veryslow",
-            "-movflags", "+faststart"
+            "-threads",
+            str(num_cores),
+            "-c:v",
+            "hevc_qsv",
+            "-global_quality",
+            "25",
+            "-preset:v",
+            "veryslow",
+            "-movflags",
+            "+faststart",
         ]
     elif check_amf_support():
+        print("AMF support detected, using hevc_amf for hardware encoding.")
         return [
-            "-threads", str(num_cores),
-            "-c:v", "hevc_amf",
-            "-quality", "quality",
-            "-usage", "transcoding",
-            "-b:v", "5M",
-            "-movflags", "+faststart"
+            "-threads",
+            str(num_cores),
+            "-c:v",
+            "hevc_amf",
+            "-quality",
+            "quality",
+            "-usage",
+            "transcoding",
+            "-b:v",
+            "5M",
+            "-movflags",
+            "+faststart",
         ]
     else:
+        print(
+            "No hardware acceleration support detected, using libx265 for software encoding."
+        )
         return [
-            "-threads", str(num_cores),
-            "-c:v", "libx265",
-            "-preset", "veryslow",
-            "-crf", "18",
-            "-x265-params", (
+            "-threads",
+            str(num_cores),
+            "-c:v",
+            "libx265",
+            "-preset",
+            "veryslow",
+            "-crf",
+            "18",
+            "-x265-params",
+            (
                 f"numa-pools=48:frame-threads={num_cores}:pmode=1:pme=1:"
                 "rc-lookahead=60:bframes=8:b-adapt=2:ctu=64:ref=6:"
                 "scenecut=40:min-keyint=1:keyint=250:"
                 "aq-mode=3:psy-rd=2.0:psy-rdoq=1.0:"
                 "open-gop=1:me=4:subme=7"
             ),
-            "-movflags", "+faststart"
+            "-movflags",
+            "+faststart",
         ]
-        
+
+
 def run_complex_examples(
     num_animations=1,
     GRID_SIZE=31,
