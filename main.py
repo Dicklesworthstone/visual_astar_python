@@ -1247,7 +1247,7 @@ def generate_and_validate_maze(width, height, maze_generation_approach):
 
 
 def generate_solvable_maze(
-    width, height, maze_generation_approach, max_attempts=100, max_workers=None
+    width, height, maze_generation_approach, max_attempts=50, max_workers=None
 ):
     print(
         f"Attempting to generate a solvable maze using {maze_generation_approach} approach..."
@@ -1271,7 +1271,19 @@ def generate_solvable_maze(
                     f.cancel()
                 return maze, start, goal
 
-    print(f"Failed to generate a solvable maze after {max_attempts} attempts")
+    print(
+        f"Failed to generate a solvable maze after {max_attempts} attempts. Trying smart hole puncher..."
+    )
+
+    # Try smart hole puncher on the last generated maze
+    maze, success = smart_hole_puncher(maze, start, goal)
+    if success:
+        is_solvable = is_maze_solvable(maze, start, goal)
+        if is_solvable:
+            print("Solvable maze created using smart hole puncher")
+            return maze, start, goal
+
+    print("Failed to generate a solvable maze even with smart hole puncher")
     return None, None, None
 
 
