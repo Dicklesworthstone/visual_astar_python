@@ -860,19 +860,44 @@ def create_better_maze(width, height, maze_generation_approach):
 
 
 def maze_hole_puncher(maze, start, goal):
-    """Ensure the maze has a solvable path by creating a direct path from start to goal."""
-    x1, y1 = start
-    x2, y2 = goal
+    """Attempt to make the maze solvable by randomly removing walls."""
+    max_attempts = 1000
+    max_removals = 5
+    attempt = 0
 
-    # Draw a straight line from start to goal, ensuring a path exists
-    x, y = x1, y1
-    while (x, y) != (x2, y2):
-        maze[y, x] = 0
-        if x != x2:
-            x += 1 if x2 > x else -1
-        if y != y2:
-            y += 1 if y2 > y else -1
-    maze[y, x] = 0  # Ensure the goal is also marked as open
+    def is_within_bounds(x, y):
+        return 0 <= x < maze.shape[1] and 0 <= y < maze.shape[0]
+
+    def get_random_wall_positions(maze, num_positions):
+        wall_positions = list(zip(*np.where(maze == 1)))
+        random.shuffle(wall_positions)
+        return wall_positions[:num_positions]
+
+    while attempt < max_attempts:
+        attempt += 1
+
+        # Select random wall cells to remove
+        wall_positions = get_random_wall_positions(maze, max_removals)
+
+        # Temporarily remove selected walls
+        removed_cells = []
+        for x, y in wall_positions:
+            if is_within_bounds(x, y) and maze[y, x] == 1:
+                maze[y, x] = 0
+                removed_cells.append((x, y))
+
+        # Check if the maze is now solvable
+        if is_maze_solvable(maze, start, goal):
+            print(
+                f"Maze solved after {attempt} attempts with {len(removed_cells)} cells removed."
+            )
+            return
+
+        # Revert changes if not solvable
+        for x, y in removed_cells:
+            maze[y, x] = 1
+
+    print(f"Failed to make the maze solvable after {max_attempts} attempts.")
 
 
 def generate_solvable_maze(
