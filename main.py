@@ -632,7 +632,11 @@ def create_wave_function_collapse_maze_core(width, height, tiles, timeout):
                 maze[y, x] = np.random.choice(valid_tiles)
                 for dx, dy in [(0, -1), (1, 0), (0, 1), (-1, 0)]:
                     nx, ny = x + dx, y + dy
-                    if 0 < nx < width - 1 and 0 < ny < height - 1 and maze[ny, nx] == -1:
+                    if (
+                        0 < nx < width - 1
+                        and 0 < ny < height - 1
+                        and maze[ny, nx] == -1
+                    ):
                         stack.append((nx, ny))
 
     # Fill any remaining -1 cells with random valid tiles
@@ -640,7 +644,9 @@ def create_wave_function_collapse_maze_core(width, height, tiles, timeout):
         for x in range(width):
             if maze[y, x] == -1:
                 valid_tiles = get_valid_tiles(maze, x, y, width, height, tiles)
-                maze[y, x] = np.random.choice(valid_tiles) if len(valid_tiles) > 0 else 0
+                maze[y, x] = (
+                    np.random.choice(valid_tiles) if len(valid_tiles) > 0 else 0
+                )
 
     return maze
 
