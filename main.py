@@ -1788,88 +1788,86 @@ async def run_complex_examples(
         num_cores = max([1, os.cpu_count() - cores_to_spare])
         print(f"Using {num_cores} cores for frame generation")
 
-        frame_generator = partial(
-            generate_and_save_frame,
-            all_mazes=all_mazes,
-            all_exploration_orders=all_exploration_orders,
-            all_paths=all_paths,
-            all_starts=all_starts,
-            all_goals=all_goals,
-            all_maze_approaches=all_maze_approaches,
-            GRID_SIZE=GRID_SIZE,
-            wall_color=wall_color,
-            floor_color=floor_color,
-            start_color=start_color,
-            goal_color=goal_color,
-            path_color=path_color,
-            exploration_cmap=exploration_cmap,
-            DPI=DPI,
-            output_folder=output_folder,
-            frame_format=frame_format,
+    frame_generator = partial(
+        generate_and_save_frame,
+        all_mazes=all_mazes,
+        all_exploration_orders=all_exploration_orders,
+        all_paths=all_paths,
+        all_starts=all_starts,
+        all_goals=all_goals,
+        all_maze_approaches=all_maze_approaches,
+        GRID_SIZE=GRID_SIZE,
+        wall_color=wall_color,
+        floor_color=floor_color,
+        start_color=start_color,
+        goal_color=goal_color,
+        path_color=path_color,
+        exploration_cmap=exploration_cmap,
+        DPI=DPI,
+        output_folder=output_folder,
+        frame_format=frame_format,
+    )
+
+    loop = asyncio.get_event_loop()
+    with ProcessPoolExecutor(max_workers=num_cores, initializer=set_nice) as executor:
+        await asyncio.gather(
+            *[
+                loop.run_in_executor(executor, frame_generator, frame)
+                for frame in tqdm(
+                    range(max_frames), total=max_frames, desc="Generating frames"
+                )
+            ]
         )
 
-        # Generate and save frames concurrently
-        async with ProcessPoolExecutor(
-            max_workers=num_cores, initializer=set_nice
-        ) as executor:
-            await asyncio.gather(
-                *[
-                    asyncio.create_task(frame_generator(frame))
-                    for frame in tqdm(
-                        range(max_frames), total=max_frames, desc="Generating frames"
-                    )
-                ]
-            )
+    # If saving as a video, compile the saved frames
+    if not save_as_frames_only:
+        fig, axs = plt.subplots(1, num_problems, figsize=(20, 8), dpi=DPI)
+        if num_problems == 1:
+            axs = [axs]
 
-        # If saving as a video, compile the saved frames
-        if not save_as_frames_only:
-            fig, axs = plt.subplots(1, num_problems, figsize=(20, 8), dpi=DPI)
-            if num_problems == 1:
-                axs = [axs]
+        def update_frame(frame):
+            for i, ax in enumerate(axs):
+                frame_filename = os.path.join(
+                    output_folder, f"frame_{frame:04d}.{frame_format}"
+                )
+                img = Image.open(frame_filename)
+                ax.clear()
+                ax.imshow(img)
+                ax.axis("off")
 
-            def update_frame(frame):
-                for i, ax in enumerate(axs):
-                    frame_filename = os.path.join(
-                        output_folder, f"frame_{frame:04d}.{frame_format}"
-                    )
-                    img = Image.open(frame_filename)
-                    ax.clear()
-                    ax.imshow(img)
-                    ax.axis("off")
+        anim = FuncAnimation(
+            fig, update_frame, frames=max_frames, interval=100, blit=False
+        )
 
-            anim = FuncAnimation(
-                fig, update_frame, frames=max_frames, interval=100, blit=False
-            )
+        ffmpeg_params = [
+            "-threads",
+            str(num_cores),
+            "-c:v",
+            "libx265",
+            "-preset",
+            "medium",
+            "-crf",
+            "25",
+            "-x265-params",
+            "frame-threads=5:numa-pools=36:wpp=1:pmode=1:pme=1:bframes=8:b-adapt=2:rc-lookahead=60",
+            "-movflags",
+            "+faststart",
+        ]
+        print(f"Selected FFmpeg parameters: {ffmpeg_params}")
 
-            ffmpeg_params = [
-                "-threads",
-                str(num_cores),
-                "-c:v",
-                "libx265",
-                "-preset",
-                "medium",
-                "-crf",
-                "25",
-                "-x265-params",
-                "frame-threads=5:numa-pools=36:wpp=1:pmode=1:pme=1:bframes=8:b-adapt=2:rc-lookahead=60",
-                "-movflags",
-                "+faststart",
-            ]
-            print(f"Selected FFmpeg parameters: {ffmpeg_params}")
+        writer = FFMpegWriter(fps=FPS, codec="libx265", extra_args=ffmpeg_params)
 
-            writer = FFMpegWriter(fps=FPS, codec="libx265", extra_args=ffmpeg_params)
+        now = datetime.now()
+        date_time = now.strftime("%Y%m%d_%H%M%S")
+        maze_approach = all_maze_approaches[0] if all_maze_approaches else "unknown"
+        filename = f"{maze_approach}_{date_time}.mp4"
+        filepath = os.path.join(output_folder, filename)
 
-            now = datetime.now()
-            date_time = now.strftime("%Y%m%d_%H%M%S")
-            maze_approach = all_maze_approaches[0] if all_maze_approaches else "unknown"
-            filename = f"{maze_approach}_{date_time}.mp4"
-            filepath = os.path.join(output_folder, filename)
-
-            print("Saving MP4 for encoding with optimized settings...")
-            await save_animation_async(anim, filepath, writer, DPI)
-            print(f"Animation saved as '{filepath}'")
-            delete_small_files(output_folder)
-            plt.close(fig)
+        print("Saving MP4 for encoding with optimized settings...")
+        await save_animation_async(anim, filepath, writer, DPI)
+        print(f"Animation saved as '{filepath}'")
+        delete_small_files(output_folder)
+        plt.close(fig)
 
 
 def test_a_star_implementations(num_tests=100, grid_size=31):
