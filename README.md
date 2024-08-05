@@ -15,7 +15,7 @@ This project provides a high-performance implementation of the A\* ("A-Star") pa
     <img src="https://img.youtube.com/vi/iA6XJRE6CTM/0.jpg" alt="Demo of it in Action">
   </a>
   <br>
-  <em>Demo of it in Action</em>
+  <em>Demo of it in Action (click thumbnail for YouTube video!)</em>
 </div>
 
 ## Pathfinding Implementation
