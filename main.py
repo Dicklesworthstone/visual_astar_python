@@ -818,7 +818,8 @@ def create_artistic_maze(width, height):
     def add_brush_strokes(canvas, width, height):
         for _ in range(np.random.randint(5, 15)):
             x, y = np.random.randint(0, width - 1), np.random.randint(0, height - 1)
-            length = np.random.randint(10, max(width, height) // 2)
+            max_length = max(10, min(width, height) // 2)
+            length = np.random.randint(10, max_length)
             angle = np.random.uniform(0, 2 * np.pi)
             dx, dy = length * np.cos(angle), length * np.sin(angle)
             rr, cc = np.linspace(x, x + dx, num=100), np.linspace(y, y + dy, num=100)
@@ -832,8 +833,7 @@ def create_artistic_maze(width, height):
     # Add random "splatters"
     for _ in range(np.random.randint(3, 8)):
         x, y = np.random.randint(0, width - 1), np.random.randint(0, height - 1)
-        radius = np.random.randint(5, 20)
-        # Fix: Pass only the radius to disk function
+        radius = np.random.randint(5, min(20, min(width, height) // 4))
         splatter = disk(radius)
         x_start, y_start = max(0, x - radius), max(0, y - radius)
         x_end, y_end = min(width, x + radius + 1), min(height, y + radius + 1)
@@ -2329,7 +2329,7 @@ if __name__ == "__main__":
         print(f"Overall test result: {'Passed' if test_result else 'Failed'}")
 
     num_animations = 1  # Set this to the desired number of animations to generate
-    GRID_SIZE = 91  # Resolution of the maze grid
+    GRID_SIZE = 121  # Resolution of the maze grid
     num_problems = 3  # Number of mazes to show side by side in each animation
     DPI = 150  # DPI for the animation
     FPS = 4  # FPS for the animation
