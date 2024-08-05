@@ -1556,7 +1556,7 @@ def generate_and_save_frame(
     output_folder,
     frame_format,
 ):
-    fig = plt.figure(figsize=(24, 12), dpi=DPI)
+    fig = plt.figure(figsize=(24, 14), dpi=DPI)  # Increased figure height
     fig.patch.set_facecolor("#1E1E1E")  # Dark background for contrast
 
     # Main title
@@ -1657,10 +1657,11 @@ def generate_and_save_frame(
 
         # Add progress bar
         progress = current_step / total_steps
+        progress_height = 0.04  # Increased height for visibility
         progress_bar = FancyBboxPatch(
-            (0.1, -0.12),
+            (0.1, -0.15),
             width=0.8,
-            height=0.02,
+            height=progress_height,
             boxstyle="round,pad=0.01",
             facecolor="none",
             edgecolor="white",
@@ -1670,9 +1671,9 @@ def generate_and_save_frame(
         ax.add_patch(progress_bar)
 
         progress_fill = FancyBboxPatch(
-            (0.1, -0.12),
+            (0.1, -0.15),
             width=0.8 * progress,
-            height=0.02,
+            height=progress_height,
             boxstyle="round,pad=0.01",
             facecolor="#4CAF50",
             edgecolor="none",
@@ -1684,7 +1685,7 @@ def generate_and_save_frame(
         # Add progress text
         ax.text(
             0.5,
-            -0.18,
+            -0.22,
             f"Progress: {current_step}/{total_steps} ({progress:.1%})",
             ha="center",
             va="center",
@@ -1694,7 +1695,7 @@ def generate_and_save_frame(
         )
 
     # Create a layout for the legend and info text
-    gs_info = fig.add_gridspec(1, 2, left=0.05, right=0.95, top=0.15, bottom=0.02)
+    gs_info = fig.add_gridspec(1, 2, left=0.05, right=0.95, top=0.15, bottom=0.05)
 
     # Add general information with a modern look
     info_ax = fig.add_subplot(gs_info[0])
