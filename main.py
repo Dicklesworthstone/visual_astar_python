@@ -7,6 +7,7 @@ import shutil
 from asyncio import to_thread
 from datetime import datetime
 import concurrent.futures
+from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 import numpy as np
 import numba as nb
@@ -21,6 +22,7 @@ from scipy.signal import convolve2d
 from skimage.morphology import thin, disk
 from PIL import Image
 import requests
+import tqdm
 from matplotlib import font_manager
 from heapq import heappush, heappop
 
@@ -1526,7 +1528,8 @@ def create_output_folder(base_folder="maze_animations"):
     return output_folder
 
 
-async def generate_and_save_frame(
+
+def generate_and_save_frame(
     frame,
     all_mazes,
     all_exploration_orders,
@@ -1545,70 +1548,60 @@ async def generate_and_save_frame(
     output_folder,
     frame_format,
 ):
-    try:
-        fig, axs = plt.subplots(1, len(all_mazes), figsize=(20, 8), dpi=DPI)
-        if len(all_mazes) == 1:
-            axs = [axs]
+    fig, axs = plt.subplots(1, len(all_mazes), figsize=(20, 8), dpi=DPI)
+    if len(all_mazes) == 1:
+        axs = [axs]
 
-        wall_color_rgba = (
-            np.array(
-                [int(wall_color[i : i + 2], 16) for i in (1, 3, 5)] + [255],
-                dtype=np.float32,
-            )
-            / 255
+    wall_color_rgba = (
+        np.array(
+            [int(wall_color[i : i + 2], 16) for i in (1, 3, 5)] + [255],
+            dtype=np.float32,
         )
-        floor_color_rgba = (
-            np.array(
-                [int(floor_color[i : i + 2], 16) for i in (1, 3, 5)] + [255],
-                dtype=np.float32,
-            )
-            / 255
+        / 255
+    )
+    floor_color_rgba = (
+        np.array(
+            [int(floor_color[i : i + 2], 16) for i in (1, 3, 5)] + [255],
+            dtype=np.float32,
         )
+        / 255
+    )
 
-        for i, ax in enumerate(axs):
-            ax.clear()
-            maze = all_mazes[i]
-            maze_rgba = prepare_maze_rgba(maze, wall_color_rgba, floor_color_rgba)
-            ax.imshow(maze_rgba)
+    for i, ax in enumerate(axs):
+        ax.clear()
+        maze = all_mazes[i]
+        maze_rgba = prepare_maze_rgba(maze, wall_color_rgba, floor_color_rgba)
+        ax.imshow(maze_rgba)
 
-            exploration_length = len(all_exploration_orders[i])
-            path_length = len(all_paths[i])
+        exploration_length = len(all_exploration_orders[i])
+        path_length = len(all_paths[i])
 
-            if frame < exploration_length:
-                exploration_map = prepare_exploration_map(
-                    all_exploration_orders[i], frame, GRID_SIZE
-                )
-                ax.imshow(exploration_map, cmap=exploration_cmap, alpha=0.5)
-            else:
-                path_frame = frame - exploration_length
-                if path_frame < path_length:
-                    path_segment = all_paths[i][: path_frame + 1]
-                    path_x, path_y = zip(*path_segment)
-                    ax.plot(path_x, path_y, color=path_color, linewidth=2, alpha=0.8)
-
-            start_x, start_y = all_starts[i]
-            goal_x, goal_y = all_goals[i]
-            ax.plot(
-                start_x, start_y, "o", color=start_color, markersize=10, label="Start"
+        if frame < exploration_length:
+            exploration_map = prepare_exploration_map(
+                all_exploration_orders[i], frame, GRID_SIZE
             )
-            ax.plot(goal_x, goal_y, "o", color=goal_color, markersize=10, label="Goal")
-            ax.set_title(f"Example {i+1}: {all_maze_approaches[i]}")
-            ax.axis("off")
+            ax.imshow(exploration_map, cmap=exploration_cmap, alpha=0.5)
+        else:
+            path_frame = frame - exploration_length
+            if path_frame < path_length:
+                path_segment = all_paths[i][: path_frame + 1]
+                path_x, path_y = zip(*path_segment)
+                ax.plot(path_x, path_y, color=path_color, linewidth=2, alpha=0.8)
 
-        plt.tight_layout()
-        fig.canvas.draw()
+        start_x, start_y = all_starts[i]
+        goal_x, goal_y = all_goals[i]
+        ax.plot(start_x, start_y, "o", color=start_color, markersize=10, label="Start")
+        ax.plot(goal_x, goal_y, "o", color=goal_color, markersize=10, label="Goal")
+        ax.set_title(f"Example {i+1}: {all_maze_approaches[i]}")
+        ax.axis("off")
 
-        frame_filename = os.path.join(
-            output_folder, f"frame_{frame:04d}.{frame_format}"
-        )
-        await asyncio.to_thread(plt.savefig, frame_filename)
+    plt.tight_layout()
+    fig.canvas.draw()
 
-        return frame_filename
-    finally:
-        plt.close(fig)  # Ensure the figure is closed even if an exception occurs
-
-    # Add a brief sleep to yield control back to the system
-    await asyncio.sleep(0.01)  # Adjust the duration as needed
+    frame_filename = os.path.join(output_folder, f"frame_{frame:04d}.{frame_format}")
+    plt.savefig(frame_filename)
+    plt.close(fig)
+    return frame_filename
 
 
 async def save_animation_async(anim, filepath, writer, DPI):
@@ -1814,8 +1807,7 @@ async def run_complex_examples(
         print(f"Max frames: {max_frames}")
 
         max_frames = max(1, max_frames)
-        cores_to_spare = 8
-        num_cores = max([1, os.cpu_count() - cores_to_spare])
+        num_cores = max([1, os.cpu_count() - 4])
         print(f"Using {num_cores} cores for frame generation")
 
         frame_generator = partial(
@@ -1838,16 +1830,17 @@ async def run_complex_examples(
             frame_format=frame_format,
         )
 
-        async def process_frame(frame):
-            return await frame_generator(frame)
-
-        async with asyncio.TaskGroup() as tg:
-            frame_tasks = [
-                tg.create_task(process_frame(frame)) for frame in range(max_frames)
-            ]
-
-        # Wait for all tasks to complete
-        await asyncio.gather(*frame_tasks)
+        # Generate and save frames concurrently
+        with ProcessPoolExecutor(
+            max_workers=num_cores, initializer=set_nice
+        ) as executor:
+            list(
+                tqdm(
+                    executor.map(frame_generator, range(max_frames)),
+                    total=max_frames,
+                    desc="Generating frames",
+                )
+            )
 
         # If saving as a video, compile the saved frames
         if not save_as_frames_only:
@@ -1898,11 +1891,7 @@ async def run_complex_examples(
             print(f"Animation saved as '{filepath}'")
             delete_small_files(output_folder)
             plt.close(fig)
-
-        # Close any remaining open figures
-        plt.close("all")
-
-    remove_old_empty_directories()
+        remove_old_empty_directories()
 
 
 def test_a_star_implementations(num_tests=100, grid_size=31):
