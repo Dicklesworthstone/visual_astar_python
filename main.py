@@ -1781,7 +1781,7 @@ def generate_and_save_frame(
 
     plt.tight_layout(rect=[0, 0.05, 1, 0.95])
 
-    frame_filename = os.path.join(output_folder, f"frame_{frame:04d}.{frame_format}")
+    frame_filename = os.path.join(output_folder, f"frame_{frame:05d}.{frame_format}")
     plt.savefig(
         frame_filename,
         facecolor=fig.get_facecolor(),
@@ -2060,7 +2060,7 @@ async def run_complex_examples(
             def update_frame(frame):
                 for i, ax in enumerate(axs):
                     frame_filename = os.path.join(
-                        output_folder, f"frame_{frame:04d}.{frame_format}"
+                        output_folder, f"frame_{frame:05d}.{frame_format}"
                     )
                     img = Image.open(frame_filename)
                     ax.clear()

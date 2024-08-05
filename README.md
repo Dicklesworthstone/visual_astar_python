@@ -219,19 +219,19 @@ Assuming your frames are named sequentially (e.g., `frame_0001.png`, `frame_0002
 
 ```bash
 cd /home/ubuntu/visual_astar_python/maze_animations/animation_20240805_114757/ # Change to the directory containing the frames-- this is just an example
-ffmpeg -framerate $(echo "($(find . -maxdepth 1 -type f -name 'frame_*.png' | wc -l) + 30 - 1) / 30" | bc) -i frame_%04d.png -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2,scale=3840:2160" -c:v libx265 -preset slow -crf 28 -pix_fmt yuv420p -x265-params "pools=16:bframes=8:ref=4:no-open-gop=1:me=star:rd=4:aq-mode=3:aq-strength=1.0" -movflags +faststart output.mp4
+ffmpeg -framerate $(echo "($(find . -maxdepth 1 -type f -name 'frame_*.png' | wc -l) + 30 - 1) / 30" | bc) -i frame_%05d.png -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2,scale=3840:2160" -c:v libx265 -preset slow -crf 28 -pix_fmt yuv420p -x265-params "pools=16:bframes=8:ref=4:no-open-gop=1:me=star:rd=4:aq-mode=3:aq-strength=1.0" -movflags +faststart output.mp4
 ```
 
 For encoding using x264, use:
 
 ```bash
-ffmpeg -framerate $(echo "($(find . -maxdepth 1 -type f -name 'frame_*.png' | wc -l) + 30 - 1) / 30" | bc) -i frame_%04d.png -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" -c:v libx264 -crf 18 -pix_fmt yuv420p -threads 16 -movflags +faststart output_x264.mp4
+ffmpeg -framerate $(echo "($(find . -maxdepth 1 -type f -name 'frame_*.png' | wc -l) + 30 - 1) / 30" | bc) -i frame_%05d.png -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" -c:v libx264 -crf 18 -pix_fmt yuv420p -threads 16 -movflags +faststart output_x264.mp4
 ```
 
 #### Explanation of Options
 
 - **`-framerate $(...)`**: Calculates the frame rate based on the number of images and desired video duration (30 seconds in this example). This ensures that the video plays for the correct duration regardless of the number of frames.
-- **`-i frame_%04d.png`**: Specifies the input file pattern. `%04d` indicates that the input files are sequentially numbered with four digits (e.g., `frame_0001.png`, `frame_0002.png`).
+- **`-i frame_%05d.png`**: Specifies the input file pattern. `%05d` indicates that the input files are sequentially numbered with four digits (e.g., `frame_00001.png`, `frame_00002.png`).
 - **`-vf "pad=ceil(iw/2)*2:ceil(ih/2)*2,scale=3840:2160"`**: The `pad` filter ensures the video dimensions are even, which is required for many codecs. The `scale` filter resizes the video to 4K resolution (3840x2160). These filters ensure the output video has compatible dimensions and resolution.
 - **`-c:v libx265`**: Specifies the use of the x265 codec for encoding, which provides efficient compression. The x264 variant uses `-c:v libx264` for compatibility and high-quality output.
 - **`-preset slow`**: Sets the encoding preset, balancing compression efficiency and encoding time. `slow` is a good compromise for higher compression at a slower speed.
