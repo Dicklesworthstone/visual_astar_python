@@ -7,7 +7,6 @@ import shutil
 from asyncio import to_thread
 from datetime import datetime
 import concurrent.futures
-from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 import numpy as np
 import numba as nb
@@ -20,7 +19,6 @@ from noise import snoise2
 from scipy.ndimage import label, binary_dilation
 from scipy.signal import convolve2d
 from skimage.morphology import thin, disk
-from tqdm import tqdm
 from PIL import Image
 import requests
 from matplotlib import font_manager
@@ -1547,64 +1545,66 @@ async def generate_and_save_frame(
     output_folder,
     frame_format,
 ):
-    fig, axs = plt.subplots(1, len(all_mazes), figsize=(20, 8), dpi=DPI)
-    if len(all_mazes) == 1:
-        axs = [axs]
+    try:
+        fig, axs = plt.subplots(1, len(all_mazes), figsize=(20, 8), dpi=DPI)
+        if len(all_mazes) == 1:
+            axs = [axs]
 
-    wall_color_rgba = (
-        np.array(
-            [int(wall_color[i : i + 2], 16) for i in (1, 3, 5)] + [255],
-            dtype=np.float32,
-        )
-        / 255
-    )
-    floor_color_rgba = (
-        np.array(
-            [int(floor_color[i : i + 2], 16) for i in (1, 3, 5)] + [255],
-            dtype=np.float32,
-        )
-        / 255
-    )
-
-    for i, ax in enumerate(axs):
-        ax.clear()
-        maze = all_mazes[i]
-        maze_rgba = prepare_maze_rgba(maze, wall_color_rgba, floor_color_rgba)
-        ax.imshow(maze_rgba)
-
-        exploration_length = len(all_exploration_orders[i])
-        path_length = len(all_paths[i])
-
-        if frame < exploration_length:
-            exploration_map = prepare_exploration_map(
-                all_exploration_orders[i], frame, GRID_SIZE
+        wall_color_rgba = (
+            np.array(
+                [int(wall_color[i : i + 2], 16) for i in (1, 3, 5)] + [255],
+                dtype=np.float32,
             )
-            ax.imshow(exploration_map, cmap=exploration_cmap, alpha=0.5)
-        else:
-            path_frame = frame - exploration_length
-            if path_frame < path_length:
-                path_segment = all_paths[i][: path_frame + 1]
-                path_x, path_y = zip(*path_segment)
-                ax.plot(path_x, path_y, color=path_color, linewidth=2, alpha=0.8)
+            / 255
+        )
+        floor_color_rgba = (
+            np.array(
+                [int(floor_color[i : i + 2], 16) for i in (1, 3, 5)] + [255],
+                dtype=np.float32,
+            )
+            / 255
+        )
 
-        start_x, start_y = all_starts[i]
-        goal_x, goal_y = all_goals[i]
-        ax.plot(start_x, start_y, "o", color=start_color, markersize=10, label="Start")
-        ax.plot(goal_x, goal_y, "o", color=goal_color, markersize=10, label="Goal")
-        ax.set_title(f"Example {i+1}: {all_maze_approaches[i]}")
-        ax.axis("off")
+        for i, ax in enumerate(axs):
+            ax.clear()
+            maze = all_mazes[i]
+            maze_rgba = prepare_maze_rgba(maze, wall_color_rgba, floor_color_rgba)
+            ax.imshow(maze_rgba)
 
-    plt.tight_layout()
-    fig.canvas.draw()
+            exploration_length = len(all_exploration_orders[i])
+            path_length = len(all_paths[i])
 
-    frame_filename = os.path.join(output_folder, f"frame_{frame:04d}.{frame_format}")
-    await asyncio.to_thread(plt.savefig, frame_filename)
-    plt.close(fig)
+            if frame < exploration_length:
+                exploration_map = prepare_exploration_map(
+                    all_exploration_orders[i], frame, GRID_SIZE
+                )
+                ax.imshow(exploration_map, cmap=exploration_cmap, alpha=0.5)
+            else:
+                path_frame = frame - exploration_length
+                if path_frame < path_length:
+                    path_segment = all_paths[i][: path_frame + 1]
+                    path_x, path_y = zip(*path_segment)
+                    ax.plot(path_x, path_y, color=path_color, linewidth=2, alpha=0.8)
+
+            start_x, start_y = all_starts[i]
+            goal_x, goal_y = all_goals[i]
+            ax.plot(start_x, start_y, "o", color=start_color, markersize=10, label="Start")
+            ax.plot(goal_x, goal_y, "o", color=goal_color, markersize=10, label="Goal")
+            ax.set_title(f"Example {i+1}: {all_maze_approaches[i]}")
+            ax.axis("off")
+
+        plt.tight_layout()
+        fig.canvas.draw()
+
+        frame_filename = os.path.join(output_folder, f"frame_{frame:04d}.{frame_format}")
+        await asyncio.to_thread(plt.savefig, frame_filename)
+
+        return frame_filename
+    finally:
+        plt.close(fig)  # Ensure the figure is closed even if an exception occurs
 
     # Add a brief sleep to yield control back to the system
     await asyncio.sleep(0.01)  # Adjust the duration as needed
-
-    return frame_filename
 
 
 async def save_animation_async(anim, filepath, writer, DPI):

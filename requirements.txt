@@ -1,6 +1,5 @@
 matplotlib
 numpy
-tqdm
 scikit-image
 scipy
 ffmpeg
