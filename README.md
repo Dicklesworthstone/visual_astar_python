@@ -282,6 +282,10 @@ To generate and visualize a maze, run the main script with the desired parameter
 python main.py
 ```
 
+You can see what it looks like running here:
+
+[![asciicast](https://asciinema.org/a/BwnzShGe1Py5QZJ2IXru7xGMv.svg)](https://asciinema.org/a/BwnzShGe1Py5QZJ2IXru7xGMv)
+
 ### Customization
 
 - **Maze Generation Approach**: Specify the desired maze generation approach (e.g., `dla`, `wave_function_collapse`) to customize the type of maze generated.
