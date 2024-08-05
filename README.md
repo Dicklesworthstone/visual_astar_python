@@ -207,11 +207,7 @@ The visualization component in this project is designed to provide a comprehensi
 
 ### Assembling Frames into an MP4 File Using FFmpeg
 
-If you have saved the frames as individual image files and wish to manually assemble them into an MP4 video, you can use FFmpeg, a powerful multimedia processing tool. Below are the steps and recommended settings to create a high-quality MP4 file from a sequence of frames.
-
-#### Prerequisites
-
-Ensure FFmpeg is installed on your system. You can download it from the [official FFmpeg website](https://ffmpeg.org/download.html) or install it via a package manager. Alternatively, you can download a pre-compiled binary from the most recent version [here](https://johnvansickle.com/ffmpeg/). Additionally, you may need the `bc` command for calculations, which can be installed using:
+If you have saved the frames as individual image files and wish to manually assemble them into an MP4 video, you can use FFmpeg. You can download it from the [official FFmpeg website](https://ffmpeg.org/download.html) or install it via a package manager. Alternatively, you can download a pre-compiled binary from the most recent version [here](https://johnvansickle.com/ffmpeg/) (recommended; note that if you do this, you'll have to copy the binary to `/usr/bin/` and do `chmod +x ffmpeg` to make it executable. To check which version of FFmpeg you're actually using, try `which ffmpeg`). Additionally, you may need the `bc` command for calculations, which can be installed using:
 
 ```bash
 sudo apt install bc
@@ -368,7 +364,7 @@ A\* is widely used in various domains due to its reliability and efficiency:
 
 ### Advanced Implementation Features
 
-This project's implementation of A\* goes beyond standard features, incorporating advanced techniques to enhance performance and versatility. Most of the credit for these goes to Andrew Kravchuck, who wrote the Lisp implementation this is based on: 
+This project's implementation of A\* goes beyond standard features, incorporating advanced techniques to enhance performance and versatility. Most of the credit for these goes to Andrew Kravchuck, who wrote the Lisp implementation this is based on:
 
 1. **Smart Organization**: The algorithm uses a priority queue to manage paths, ensuring that the most promising paths are explored first. This efficient data structure reduces the time spent evaluating less optimal paths.
 
