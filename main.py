@@ -28,7 +28,7 @@ from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.animation import FuncAnimation, FFMpegWriter
 from matplotlib.collections import LineCollection
 from matplotlib.patheffects import withStroke
-from matplotlib.patches import Patch, FancyBboxPatch, Circle
+from matplotlib.patches import Patch, Circle
 from matplotlib.lines import Line2D
 from mpl_toolkits.mplot3d import Axes3D, art3d  # noqa: F401
 from heapq import heappush, heappop
@@ -1556,12 +1556,12 @@ def generate_and_save_frame(
     DPI,
     output_folder,
     frame_format,
-    use_3d_mode=False,
+    use_3d_mode=True,
 ):
     fig = plt.figure(figsize=(24, 12), dpi=DPI)
     fig.patch.set_facecolor("#1E1E1E")  # Dark background for contrast
 
-    gs = fig.add_gridspec(2, len(all_mazes), height_ratios=[4, 1])
+    gs = fig.add_gridspec(1, len(all_mazes))
 
     wall_color_rgba = (
         np.array(
@@ -1579,20 +1579,43 @@ def generate_and_save_frame(
     )
 
     for i in range(len(all_mazes)):
-        if use_3d_mode:
-            ax_main = fig.add_subplot(gs[0, i], projection="3d")
-        else:
-            ax_main = fig.add_subplot(gs[0, i])
-        ax_stats = fig.add_subplot(gs[1, i])
+        ax = fig.add_subplot(gs[i], projection="3d")
+        ax.set_facecolor("#1E1E1E")
 
         maze = all_mazes[i]
-        maze_rgba = prepare_maze_rgba(maze, wall_color_rgba, floor_color_rgba)
+        x, y = np.meshgrid(range(GRID_SIZE), range(GRID_SIZE))
 
         if use_3d_mode:
-            x, y = np.meshgrid(range(GRID_SIZE), range(GRID_SIZE))
-            ax_main.plot_surface(x, y, maze, facecolors=maze_rgba, shade=False)
-        else:
-            ax_main.imshow(maze_rgba)
+            # Create a 3D representation of the maze
+            z = np.zeros_like(maze)
+            dx = dy = 0.8  # Slightly smaller than 1 to create gaps between cells
+            dz = 0.5  # Height of the walls
+
+            # Plot floor
+            ax.plot_surface(
+                x,
+                y,
+                z,
+                facecolors=np.tile(floor_color_rgba, (GRID_SIZE, GRID_SIZE, 1)),
+                shade=False,
+            )
+
+            # Plot walls
+            for ii in range(GRID_SIZE):
+                for jj in range(GRID_SIZE):
+                    if maze[ii, jj] == 1:
+                        xx, yy = np.meshgrid([jj, jj + dx], [ii, ii + dy])
+                        ax.plot_surface(
+                            xx,
+                            yy,
+                            np.ones_like(xx) * dz,
+                            facecolors=np.tile(wall_color_rgba, (2, 2, 1)),
+                            shade=False,
+                        )
+
+            # Set view angle
+            ax.view_init(elev=45, azim=45)
+            ax.set_box_aspect((1, 1, 0.3))  # Adjust the z-axis scale
 
         exploration_length = len(all_exploration_orders[i])
         path_length = len(all_paths[i])
@@ -1601,63 +1624,60 @@ def generate_and_save_frame(
             exploration_map = prepare_exploration_map(
                 all_exploration_orders[i], frame, GRID_SIZE
             )
-            if use_3d_mode:
-                exploration_heights = exploration_map * 0.5  # Scale for visibility
-                ax_main.plot_surface(
-                    x, y, exploration_heights, cmap=exploration_cmap, alpha=0.7
-                )
-            else:
-                ax_main.imshow(exploration_map, cmap=exploration_cmap, alpha=0.7)
+            explored_positions = np.array(all_exploration_orders[i][:frame])
+            ax.scatter(
+                explored_positions[:, 0],
+                explored_positions[:, 1],
+                explored_positions[:, 1] * 0 + 0.1,  # Slightly above the floor
+                c=exploration_map[explored_positions[:, 1], explored_positions[:, 0]],
+                cmap=exploration_cmap,
+                s=50,
+                alpha=0.7,
+            )
         else:
             path_frame = frame - exploration_length
             if path_frame < path_length:
-                path_segment = all_paths[i][: path_frame + 1]
-                if use_3d_mode:
-                    ax_main.plot(
-                        *zip(*path_segment),
-                        [0.5] * len(path_segment),
-                        color=path_color,
-                        linewidth=3,
-                        alpha=0.8,
-                    )
-                else:
-                    # Use LineCollection for efficient 2D path plotting
-                    points = np.array(path_segment).reshape(-1, 1, 2)
-                    segments = np.concatenate([points[:-1], points[1:]], axis=1)
-                    lc = LineCollection(
-                        segments, colors=path_color, linewidths=3, alpha=0.8
-                    )
-                    ax_main.add_collection(lc)
+                path_segment = np.array(all_paths[i][: path_frame + 1])
+                ax.plot(
+                    path_segment[:, 0],
+                    path_segment[:, 1],
+                    path_segment[:, 1] * 0 + 0.1,
+                    color=path_color,
+                    linewidth=3,
+                    alpha=0.8,
+                )
 
         start_x, start_y = all_starts[i]
         goal_x, goal_y = all_goals[i]
 
-        # Animated markers for start and goal using Circle patches
-        start_circle = Circle(
-            (start_x, start_y),
-            0.5,
+        # Animated markers for start and goal
+        ax.scatter(
+            [start_x],
+            [start_y],
+            [0.25],
             color=start_color,
-            alpha=0.7 + 0.3 * np.sin(frame * 0.2),
+            s=300,
+            alpha=0.9 + 0.1 * np.sin(frame * 0.2),
+            zorder=10,
         )
-        goal_star = Line2D(
+        ax.scatter(
             [goal_x],
             [goal_y],
-            marker="*",
+            [0.25],
             color=goal_color,
-            markersize=15,
-            markeredgecolor="white",
+            s=300,
+            marker="*",
+            alpha=0.9 + 0.1 * np.sin(frame * 0.2),
+            zorder=10,
         )
 
-        if use_3d_mode:
-            ax_main.add_patch(start_circle)
-            ax_main.add_line(goal_star)
-            art3d.pathpatch_2d_to_3d(start_circle, z=0.5, zdir="z")
-        else:
-            ax_main.add_patch(start_circle)
-            ax_main.add_line(goal_star)
+        # Remove axis ticks and labels
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_zticks([])
 
-        # Apply stroke effect to the title for better visibility
-        title = ax_main.set_title(
+        # Add a title for each maze
+        title = ax.set_title(
             f"{all_maze_approaches[i].replace('_', ' ').title()}",
             color="white",
             fontsize=14,
@@ -1665,90 +1685,59 @@ def generate_and_save_frame(
         )
         title.set_path_effects([withStroke(linewidth=3, foreground="black")])
 
-        ax_main.set_axis_off()
-
-        # Stats and progress visualization
-        ax_stats.set_facecolor("#2E2E2E")
-        ax_stats.set_axis_off()
-
-        progress = frame / max(exploration_length, path_length)
-        ax_stats.add_patch(
-            FancyBboxPatch(
-                (0.05, 0.2),
-                width=0.9,
-                height=0.3,
-                boxstyle="round,pad=0.02",
-                facecolor="#3E3E3E",
-                edgecolor="none",
-            )
-        )
-        ax_stats.add_patch(
-            FancyBboxPatch(
-                (0.05, 0.2),
-                width=0.9 * progress,
-                height=0.3,
-                boxstyle="round,pad=0.02",
-                facecolor="#4CAF50",
-                edgecolor="none",
-            )
-        )
-
-        if frame < exploration_length:
-            status_text = f"Exploring: {frame}/{exploration_length}"
-        else:
-            status_text = f"Path found: {path_frame}/{path_length}"
-
-        ax_stats.text(
-            0.5,
-            0.8,
-            status_text,
-            color="white",
-            fontsize=12,
-            ha="center",
-            va="center",
-            fontweight="bold",
-        )
-        ax_stats.text(
-            0.5,
-            0.35,
-            f"{progress:.1%}",
-            color="white",
-            fontsize=14,
-            ha="center",
-            va="center",
-            fontweight="bold",
-        )
-
-    # Add a pulsating main title with stroke effect
-    title_color = plt.cm.viridis(0.5 + 0.2 * np.sin(frame * 0.1))
+    # Add a main title with stroke effect
     title = fig.suptitle(
-        f"{'3D' if use_3d_mode else '2D'} Maze Pathfinding Visualization",
+        "3D Maze Pathfinding Visualization",
         fontsize=20,
         fontweight="bold",
-        color=title_color,
+        color="white",
         y=0.98,
     )
     title.set_path_effects([withStroke(linewidth=3, foreground="black")])
 
-    # Add some general information with a modern look
+    # Create a layout for the legend and info text
+    info_legend_gs = fig.add_gridspec(1, 2, bottom=0.02, top=0.08, wspace=0.1)
+
+    # Add general information with a modern look
+    info_ax = fig.add_subplot(info_legend_gs[0])
+    info_ax.axis("off")
     info_text = f"Frame: {frame} | Grid Size: {GRID_SIZE}x{GRID_SIZE}"
-    fig.text(
+    info_ax.text(
         0.5,
-        0.02,
+        0.5,
         info_text,
         ha="center",
+        va="center",
         fontsize=10,
         color="white",
         bbox=dict(
-            facecolor="#3E3E3E", edgecolor="none", alpha=0.7, pad=5, boxstyle="round"
+            facecolor="#3E3E3E", edgecolor="none", alpha=0.7, pad=3, boxstyle="round"
         ),
     )
 
     # Add a legend
+    legend_ax = fig.add_subplot(info_legend_gs[1])
+    legend_ax.axis("off")
     legend_elements = [
         Line2D([0], [0], color=path_color, lw=2, label="Path"),
-        Patch(facecolor=start_color, edgecolor="none", label="Start"),
-        Line2D([0], [0], marker="*", color=goal_color, label="Goal", linestyle="None"),
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            color=start_color,
+            label="Start",
+            linestyle="None",
+            markersize=10,
+        ),
+        Line2D(
+            [0],
+            [0],
+            marker="*",
+            color=goal_color,
+            label="Goal",
+            linestyle="None",
+            markersize=15,
+        ),
         Patch(
             facecolor=exploration_cmap(0.5),
             edgecolor="none",
@@ -1756,14 +1745,16 @@ def generate_and_save_frame(
             alpha=0.5,
         ),
     ]
-    fig.legend(
+    legend_ax.legend(
         handles=legend_elements,
-        loc="lower right",
-        bbox_to_anchor=(0.95, 0.05),
+        loc="center",
+        ncol=4,
+        frameon=False,
         fontsize=10,
+        labelcolor="white",
     )
 
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    plt.tight_layout(rect=[0, 0.08, 1, 0.95])
 
     frame_filename = os.path.join(output_folder, f"frame_{frame:04d}.{frame_format}")
     plt.savefig(frame_filename, facecolor=fig.get_facecolor(), edgecolor="none")
