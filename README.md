@@ -219,31 +219,40 @@ If you have saved the frames as individual image files and wish to manually asse
 
 #### Prerequisites
 
-Ensure FFmpeg is installed on your system. You can download it from the [official FFmpeg website](https://ffmpeg.org/download.html) or install it via a package manager, or you can download a pre-compiled binary from the most recent version [here](https://johnvansickle.com/ffmpeg/).
+Ensure FFmpeg is installed on your system. You can download it from the [official FFmpeg website](https://ffmpeg.org/download.html) or install it via a package manager. Alternatively, you can download a pre-compiled binary from the most recent version [here](https://johnvansickle.com/ffmpeg/). Additionally, you may need the `bc` command for calculations, which can be installed using:
+
+```bash
+sudo apt install bc
+```
 
 #### Command Example
 
-Assuming your frames are named sequentially (e.g., `frame_0001.png`, `frame_0002.png`, etc.) and stored in a folder called `output_frames`, you can use the following command to generate a 30 second video file using x265:
+Assuming your frames are named sequentially (e.g., `frame_0001.png`, `frame_0002.png`, etc.) and stored in the current directory, you can use the following command to generate a 30-second video file using x265:
 
 ```bash
-sudo apt install bc # Install the bc command if you don't have it
 ffmpeg -framerate $(echo "($(find . -maxdepth 1 -type f -name 'frame_*.png' | wc -l) + 30 - 1) / 30" | bc) -i frame_%04d.png -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2,scale=3840:2160" -c:v libx265 -preset slow -crf 28 -pix_fmt yuv420p -x265-params "pools=16:bframes=8:ref=4:no-open-gop=1:me=star:rd=4:aq-mode=3:aq-strength=1.0" -movflags +faststart output.mp4
 ```
 
-If you want to use x264 instead, try:
+For encoding using x264, use:
 
 ```bash
-ffmpeg -framerate $(bc -l <<< "$(find . -maxdepth 1 -type f -name 'frame_*.png' | wc -l) / 30") -i frame_%04d.png -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" -c:v libx264 -crf 18 -pix_fmt yuv420p -threads 16 -movflags +faststart output_x264.mp4
+ffmpeg -framerate $(echo "($(find . -maxdepth 1 -type f -name 'frame_*.png' | wc -l) + 30 - 1) / 30" | bc) -i frame_%04d.png -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" -c:v libx264 -crf 18 -pix_fmt yuv420p -threads 16 -movflags +faststart output_x264.mp4
 ```
 
 #### Explanation of Options
 
-- **`-framerate 60`**: Sets the frame rate of the output video to 60 frames per second. Adjust this value to match the desired playback speed.
-- **`-i output_frames/frame_%04d.png`**: Specifies the input file pattern. `%04d` expects four digits in the filenames, ensuring that FFmpeg processes files in the correct order.
-- **`-c:v libx264`**: Specifies the video codec to use. `libx264` is a widely-used codec for producing high-quality MP4 videos.
-- **`-crf 23`**: Sets the Constant Rate Factor, which controls the video quality. Lower values result in higher quality and larger file sizes. A value of 23 provides a good balance between quality and file size. You can lower it to 18 for nearly lossless quality or raise it to 28 for lower quality.
-- **`-preset medium`**: Controls the speed of the compression. `medium` is a good balance between compression speed and output file size. You can use `ultrafast` for quicker processing or `veryslow` for smaller file sizes with better compression.
-- **`-pix_fmt yuv420p`**: Ensures compatibility with most players by using the YUV 4:2:0 pixel format.
+- **`-framerate $(...)`**: Calculates the frame rate based on the number of images and desired video duration (30 seconds in this example). This ensures that the video plays for the correct duration regardless of the number of frames.
+- **`-i frame_%04d.png`**: Specifies the input file pattern. `%04d` indicates that the input files are sequentially numbered with four digits (e.g., `frame_0001.png`, `frame_0002.png`).
+- **`-vf "pad=ceil(iw/2)*2:ceil(ih/2)*2,scale=3840:2160"`**: The `pad` filter ensures the video dimensions are even, which is required for many codecs. The `scale` filter resizes the video to 4K resolution (3840x2160). These filters ensure the output video has compatible dimensions and resolution.
+- **`-c:v libx265`**: Specifies the use of the x265 codec for encoding, which provides efficient compression. The x264 variant uses `-c:v libx264` for compatibility and high-quality output.
+- **`-preset slow`**: Sets the encoding preset, balancing compression efficiency and encoding time. `slow` is a good compromise for higher compression at a slower speed.
+- **`-crf 28`** (for x265) and **`-crf 18`** (for x264): Controls the Constant Rate Factor, affecting the quality and file size. Lower values yield higher quality at the cost of larger file sizes. `crf 28` is suitable for x265, while `crf 18` provides nearly lossless quality for x264.
+- **`-pix_fmt yuv420p`**: Sets the pixel format to YUV 4:2:0, ensuring compatibility with most media players and devices.
+- **`-x265-params "pools=16:bframes=8:ref=4:no-open-gop=1:me=star:rd=4:aq-mode=3:aq-strength=1.0"`**: Specifies advanced x265 settings to fine-tune the encoding process. These parameters set the number of threads (`pools`), number of B-frames, reference frames, and other encoding settings for optimal quality and compression.
+- **`-threads 16`** (for x264): Limits the number of threads used for encoding to 16, balancing performance and resource usage.
+- **`-movflags +faststart`**: Enables the `faststart` option, which moves the metadata to the beginning of the file, allowing the video to start playing before it is fully downloaded. This is useful for streaming scenarios.
+
+These commands and explanations should help you efficiently create high-quality MP4 videos from a sequence of frames using FFmpeg.
 
 #### Additional Tips
 
