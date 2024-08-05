@@ -10,7 +10,13 @@ This project provides a high-performance implementation of the A\* ("A-Star") pa
 
 ![A\* Visualized in Python!](https://raw.githubusercontent.com/Dicklesworthstone/visual_astar_python/main/illustration.webp)
 
-[![Demo of it in Action](https://img.youtube.com/vi/iA6XJRE6CTM/0.jpg)](https://www.youtube.com/watch?v=iA6XJRE6CTM)
+<div align="center">
+  <a href="https://www.youtube.com/watch?v=iA6XJRE6CTM">
+    <img src="https://img.youtube.com/vi/iA6XJRE6CTM/0.jpg" alt="Demo of it in Action">
+  </a>
+  <br>
+  <em>Demo of it in Action</em>
+</div>
 
 ## Pathfinding Implementation
 
