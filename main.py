@@ -708,7 +708,6 @@ def create_growing_tree_maze(width, height):
     return maze
 
 
-@nb.jit(nopython=True)
 def generate_terrain(width, height, scale, octaves, persistence, lacunarity):
     terrain = np.zeros((height, width), dtype=np.float32)
     for y in range(height):
@@ -1526,7 +1525,6 @@ def create_output_folder(base_folder="maze_animations"):
     output_folder = os.path.join(base_folder, animation_folder_name)
     os.makedirs(output_folder, exist_ok=True)
     return output_folder
-
 
 
 def generate_and_save_frame(
