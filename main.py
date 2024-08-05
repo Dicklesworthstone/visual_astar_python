@@ -1588,7 +1588,9 @@ async def generate_and_save_frame(
 
             start_x, start_y = all_starts[i]
             goal_x, goal_y = all_goals[i]
-            ax.plot(start_x, start_y, "o", color=start_color, markersize=10, label="Start")
+            ax.plot(
+                start_x, start_y, "o", color=start_color, markersize=10, label="Start"
+            )
             ax.plot(goal_x, goal_y, "o", color=goal_color, markersize=10, label="Goal")
             ax.set_title(f"Example {i+1}: {all_maze_approaches[i]}")
             ax.axis("off")
@@ -1596,7 +1598,9 @@ async def generate_and_save_frame(
         plt.tight_layout()
         fig.canvas.draw()
 
-        frame_filename = os.path.join(output_folder, f"frame_{frame:04d}.{frame_format}")
+        frame_filename = os.path.join(
+            output_folder, f"frame_{frame:04d}.{frame_format}"
+        )
         await asyncio.to_thread(plt.savefig, frame_filename)
 
         return frame_filename
@@ -1894,6 +1898,9 @@ async def run_complex_examples(
             print(f"Animation saved as '{filepath}'")
             delete_small_files(output_folder)
             plt.close(fig)
+
+        # Close any remaining open figures
+        plt.close("all")
 
     remove_old_empty_directories()
 
