@@ -24,7 +24,7 @@ from scipy.signal import convolve2d
 from skimage.morphology import thin, disk
 from PIL import Image
 import requests
-from tqdm import tqdm 
+from tqdm import tqdm
 from matplotlib import font_manager
 from heapq import heappush, heappop
 
@@ -1117,7 +1117,9 @@ def add_walls(maze, target_percentage):
     target_wall_count = int(total_cells * target_percentage)
 
     print(
-        f"Adding walls. Initial count: {initial_wall_count:,}, Target count: {target_wall_count:,}"
+        "Adding walls. Initial count: {}, Target count: {}".format(
+            initial_wall_count, target_wall_count
+        )
     )
 
     while np.sum(maze) < target_wall_count:
@@ -1126,7 +1128,7 @@ def add_walls(maze, target_percentage):
             maze[y, x] = 1
 
     final_wall_count = np.sum(maze)
-    print(f"Walls added. Final count: {final_wall_count}")
+    print("Walls added. Final count: {}".format(final_wall_count))
     return maze
 
 
@@ -1138,7 +1140,9 @@ def remove_walls(maze, target_percentage):
     target_wall_count = int(total_cells * target_percentage)
 
     print(
-        f"Removing walls. Initial count: {initial_wall_count:,}, Target count: {target_wall_count:,}"
+        "Removing walls. Initial count: {}, Target count: {}".format(
+            initial_wall_count, target_wall_count
+        )
     )
 
     while np.sum(maze) > target_wall_count:
@@ -1147,7 +1151,7 @@ def remove_walls(maze, target_percentage):
             maze[y, x] = 0
 
     final_wall_count = np.sum(maze)
-    print(f"Walls removed. Final count: {final_wall_count}")
+    print("Walls removed. Final count: {}".format(final_wall_count))
     return maze
 
 
@@ -1806,9 +1810,15 @@ async def run_complex_examples(
 
         max_frames = max(1, max_frames)
         num_cores = max([1, os.cpu_count() - 8])
-        max_concurrent_tasks = min(num_cores, 48)  # Limit to 48 concurrent tasks or number of cores, whichever is smaller
-        semaphore = Semaphore(max_concurrent_tasks) # Create a semaphore to limit concurrent tasks         
-        print(f"Using {num_cores} cores for frame generation and a semaphore with {max_concurrent_tasks} permits.")
+        max_concurrent_tasks = min(
+            num_cores, 48
+        )  # Limit to 48 concurrent tasks or number of cores, whichever is smaller
+        semaphore = Semaphore(
+            max_concurrent_tasks
+        )  # Create a semaphore to limit concurrent tasks
+        print(
+            f"Using {num_cores} cores for frame generation and a semaphore with {max_concurrent_tasks} permits."
+        )
 
         frame_generator = partial(
             generate_and_save_frame,
@@ -1835,12 +1845,19 @@ async def run_complex_examples(
                 return frame_generator(frame)
 
         # Generate and save frames concurrently
-        with ProcessPoolExecutor(max_workers=num_cores, initializer=set_nice) as executor:
-            futures = [executor.submit(frame_generator_with_semaphore, frame) for frame in range(max_frames)]
-            for i, _ in enumerate(tqdm(as_completed(futures), total=max_frames, desc="Generating frames")):
+        with ProcessPoolExecutor(
+            max_workers=num_cores, initializer=set_nice
+        ) as executor:
+            futures = [
+                executor.submit(frame_generator_with_semaphore, frame)
+                for frame in range(max_frames)
+            ]
+            for i, _ in enumerate(
+                tqdm(as_completed(futures), total=max_frames, desc="Generating frames")
+            ):
                 if i % 100 == 0:  # Every 100 frames
                     gc.collect()  # Force garbage collection
-                            
+
         # If saving as a video, compile the saved frames
         if not save_as_frames_only:
             fig, axs = plt.subplots(1, num_problems, figsize=(20, 8), dpi=DPI)
