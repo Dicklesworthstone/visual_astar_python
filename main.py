@@ -2329,9 +2329,9 @@ if __name__ == "__main__":
         print(f"Overall test result: {'Passed' if test_result else 'Failed'}")
 
     num_animations = 1  # Set this to the desired number of animations to generate
-    GRID_SIZE = 51  # Resolution of the maze grid
+    GRID_SIZE = 91  # Resolution of the maze grid
     num_problems = 3  # Number of mazes to show side by side in each animation
-    DPI = 90  # DPI for the animation
+    DPI = 150  # DPI for the animation
     FPS = 4  # FPS for the animation
     save_as_frames_only = 1  # Set this to 1 to save frames as individual images in a generated sub-folder; 0 to save as a single video as well
     dark_mode = 0  # Change the theme of the maze visualization
