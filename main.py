@@ -1866,7 +1866,7 @@ async def run_complex_examples(
                 if i % 100 == 0:  # Every 100 frames
                     gc.collect()  # Force garbage collection
 
-                print("\nFrame generation complete.")
+        print("\nFrame generation complete.")
 
         # If saving as a video, compile the saved frames
         if not save_as_frames_only:
