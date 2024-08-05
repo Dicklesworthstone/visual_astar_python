@@ -2316,7 +2316,7 @@ if __name__ == "__main__":
     FPS = 4  # FPS for the animation
     save_as_frames_only = 1  # Set this to 1 to save frames as individual images in a generated sub-folder; 0 to save as a single video as well
     dark_mode = 0  # Change the theme of the maze visualization
-    use_3d_mode = 1  # Set this to 1 to use 3D visualization mode
+    use_3d_mode = 0  # Set this to 1 to use 3D visualization mode
     asyncio.run(
         run_complex_examples(
             num_animations,
