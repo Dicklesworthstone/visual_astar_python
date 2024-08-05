@@ -1,6 +1,6 @@
 # Visual A\* Pathfinding and Maze Generation in Python
 
-This project provides a high-performance implementation of the A\* ("A-Star") pathfinding algorithm (based on [this](https://gitlab.com/lockie/cl-astar) Lisp implementation by Andrew Kravchuck) along with various maze generation techniques to showcase how this algorithm works, as well as an advanced animated visualization of pathfinding in these mazes. The mazes are generated using different approaches, each providing unique characteristics and challenges. The A\* algorithm is designed to efficiently find the shortest path in these mazes, taking into consideration various heuristic functions and neighbor enumerators.
+This project provides a high-performance implementation of the A\* ("A-Star") pathfinding algorithm (based on [this](https://gitlab.com/lockie/cl-astar) Lisp implementation by Andrew Kravchuck) along with various maze generation techniques to showcase how this algorithm works, as well as an advanced animated visualization of pathfinding in these mazes. The mazes are generated using many diverse approaches, each providing a different visual look and feel and also potential challenges for a pathfinding algorithm. The A\* algorithm is designed to efficiently find the shortest path in these mazes, taking into consideration various heuristic functions and neighbor enumerators.
 
 ## Features
 
