@@ -8,8 +8,8 @@ import shutil
 from asyncio import to_thread
 from datetime import datetime
 import concurrent.futures
-from concurrent.futures import ProcessPoolExecutor, as_completed
-from threading import Semaphore
+from concurrent.futures import ProcessPoolExecutor
+from asyncio import Semaphore
 from functools import partial
 import numpy as np
 import numba as nb
@@ -1839,26 +1839,35 @@ async def run_complex_examples(
             frame_format=frame_format,
         )
 
-        async def frame_generator_with_semaphore(frame):
+        async def process_frame(executor, frame):
             async with semaphore:
-                return await asyncio.to_thread(frame_generator, frame)
+                return await asyncio.get_event_loop().run_in_executor(
+                    executor, frame_generator, frame
+                )
 
-        # Generate and save frames concurrently
-        tasks = [frame_generator_with_semaphore(frame) for frame in range(max_frames)]
+        # Generate and save frames concurrently using ProcessPoolExecutor and Semaphore
+        with ProcessPoolExecutor(max_workers=num_cores) as executor:
+            tasks = [process_frame(executor, frame) for frame in range(max_frames)]
 
-        for i, task in enumerate(
-            tqdm(
-                asyncio.as_completed(tasks), total=max_frames, desc="Generating frames"
-            )
-        ):
-            try:
-                frame_filename = await task
-                print(f"Generated frame {i+1}/{max_frames}: {frame_filename}")
-            except Exception as e:
-                print(f"Error generating frame {i+1}: {str(e)}")
+            for i, task in enumerate(
+                tqdm(
+                    asyncio.as_completed(tasks),
+                    total=max_frames,
+                    desc="Generating frames",
+                ),
+                start=1,
+            ):
+                try:
+                    frame_filename = await task
+                    print(f"Generated frame {i}/{max_frames}: {frame_filename}")
+                except Exception as e:
+                    print(f"Error generating frame {i}: {str(e)}")
 
-            if (i + 1) % 100 == 0:  # Every 100 frames
-                gc.collect()  # Force garbage collection
+                if i % 100 == 0:  # Every 100 frames
+                    gc.collect()  # Force garbage collection
+
+        print("\nFrame generation complete.")
+
         # If saving as a video, compile the saved frames
         if not save_as_frames_only:
             fig, axs = plt.subplots(1, num_problems, figsize=(20, 8), dpi=DPI)
