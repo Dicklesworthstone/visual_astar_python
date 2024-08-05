@@ -43,7 +43,7 @@ font_path = os.path.join("fonts", font_filename)
 # Create a fonts directory if it doesn't exist
 os.makedirs("fonts", exist_ok=True)
 
-os.nice(20)  # Increase the niceness value to lower the priority
+os.nice(22)  # Increase the niceness value to lower the priority
 
 
 # Function to download the font
@@ -1108,7 +1108,7 @@ def smart_hole_puncher(maze, start, goal):
 
 def set_nice():
     try:
-        os.nice(20)  # Increase the niceness value to lower the priority
+        os.nice(22)  # Increase the niceness value to lower the priority
     except AttributeError:
         pass  # os.nice() is not available on Windows
 
@@ -1559,7 +1559,21 @@ def generate_and_save_frame(
     fig = plt.figure(figsize=(24, 12), dpi=DPI)
     fig.patch.set_facecolor("#1E1E1E")  # Dark background for contrast
 
-    gs = fig.add_gridspec(1, len(all_mazes))
+    # Main title
+    title_color = plt.cm.viridis(0.5 + 0.2 * np.sin(frame * 0.1))
+    title = fig.suptitle(
+        "2D Maze Pathfinding Visualization",
+        fontsize=20,
+        fontweight="bold",
+        color=title_color,
+        y=0.98,
+    )
+    title.set_path_effects([withStroke(linewidth=3, foreground="black")])
+
+    # Create layout for mazes
+    gs_mazes = fig.add_gridspec(
+        1, len(all_mazes), left=0.05, right=0.95, top=0.9, bottom=0.15
+    )
 
     wall_color_rgba = (
         np.array(
@@ -1577,7 +1591,7 @@ def generate_and_save_frame(
     )
 
     for i in range(len(all_mazes)):
-        ax = fig.add_subplot(gs[i])
+        ax = fig.add_subplot(gs_mazes[i])
 
         maze = all_mazes[i]
         maze_rgba = prepare_maze_rgba(maze, wall_color_rgba, floor_color_rgba)
@@ -1628,32 +1642,21 @@ def generate_and_save_frame(
         ax.add_patch(start_circle)
         ax.add_line(goal_star)
 
-        title = ax.set_title(
+        ax.set_title(
             f"{all_maze_approaches[i].replace('_', ' ').title()}",
             color="white",
             fontsize=14,
             fontweight="bold",
+            pad=20,
         )
-        title.set_path_effects([withStroke(linewidth=3, foreground="black")])
 
         ax.set_axis_off()
 
-    # Add a pulsating main title with stroke effect
-    title_color = plt.cm.viridis(0.5 + 0.1 * np.sin(frame * 0.1))
-    title = fig.suptitle(
-        "2D Maze Pathfinding Visualization",
-        fontsize=20,
-        fontweight="bold",
-        color=title_color,
-        y=0.98,
-    )
-    title.set_path_effects([withStroke(linewidth=3, foreground="black")])
-
     # Create a layout for the legend and info text
-    info_legend_gs = fig.add_gridspec(1, 2, bottom=0.02, top=0.08, wspace=0.1)
+    gs_info = fig.add_gridspec(1, 2, left=0.05, right=0.95, top=0.1, bottom=0.02)
 
     # Add general information with a modern look
-    info_ax = fig.add_subplot(info_legend_gs[0])
+    info_ax = fig.add_subplot(gs_info[0])
     info_ax.axis("off")
     info_text = f"Frame: {frame} | Grid Size: {GRID_SIZE}x{GRID_SIZE}"
     info_ax.text(
@@ -1665,16 +1668,12 @@ def generate_and_save_frame(
         fontsize=10,
         color="white",
         bbox=dict(
-            facecolor="#3E3E3E",
-            edgecolor="none",
-            alpha=0.7,
-            pad=3,
-            boxstyle="round",
+            facecolor="#3E3E3E", edgecolor="none", alpha=0.7, pad=3, boxstyle="round"
         ),
     )
 
     # Add a legend
-    legend_ax = fig.add_subplot(info_legend_gs[1])
+    legend_ax = fig.add_subplot(gs_info[1])
     legend_ax.axis("off")
     legend_elements = [
         Line2D([0], [0], color=path_color, lw=2, label="Path"),
@@ -1704,10 +1703,16 @@ def generate_and_save_frame(
         labelcolor="white",
     )
 
-    plt.tight_layout(rect=[0, 0.08, 1, 0.95])
+    # Adjust the layout
+    fig.subplots_adjust(wspace=0.3, hspace=0.3)
 
     frame_filename = os.path.join(output_folder, f"frame_{frame:04d}.{frame_format}")
-    plt.savefig(frame_filename, facecolor=fig.get_facecolor(), edgecolor="none")
+    plt.savefig(
+        frame_filename,
+        facecolor=fig.get_facecolor(),
+        edgecolor="none",
+        bbox_inches="tight",
+    )
     plt.close(fig)
     return frame_filename
 
@@ -1913,10 +1918,10 @@ async def run_complex_examples(
         )
         print(f"Max frames: {max_frames}")
         max_frames = max(1, max_frames)
-        num_cores = max(1, os.cpu_count() - 2)  # Leave 2 cores for system processes
+        num_cores = max(1, os.cpu_count() - 8)  # Leave 8 cores for system processes
         max_concurrent_tasks = min(
-            num_cores, 16
-        )  # Limit to 16 concurrent tasks or number of cores, whichever is smaller
+            num_cores, 8
+        )  # Limit to 8 concurrent tasks or number of cores, whichever is smaller
         semaphore = Semaphore(max_concurrent_tasks)
         print(
             f"Using {num_cores} cores for frame generation and a semaphore with {max_concurrent_tasks} permits."
