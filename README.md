@@ -254,18 +254,6 @@ ffmpeg -framerate $(echo "($(find . -maxdepth 1 -type f -name 'frame_*.png' | wc
 
 These commands and explanations should help you efficiently create high-quality MP4 videos from a sequence of frames using FFmpeg.
 
-#### Additional Tips
-
-1. **Adjusting Frame Rate**: You can change the frame rate (`-framerate`) to suit your needs. For smoother animations, use a higher frame rate; for slower motion, use a lower frame rate.
-
-2. **Fine-tuning Quality**: Experiment with the `-crf` and `-preset` options to find the best balance between quality and file size for your specific use case.
-
-3. **Audio Track**: If you have an audio track to include, you can add it with the `-i audio_file.mp3` option and map it to the output with `-map 0:v -map 1:a`.
-
-4. **Output Filename**: The `output_video.mp4` at the end of the command specifies the name of the generated video file. You can change it to whatever suits your project.
-
-Using these settings, you can create a high-quality MP4 video from the saved frame images, suitable for presentations, sharing, or further analysis.
-
 ## Usage
 
 ### Initial Setup
