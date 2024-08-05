@@ -29,7 +29,7 @@ from matplotlib.animation import FuncAnimation, FFMpegWriter
 from matplotlib.lines import Line2D
 from matplotlib.collections import LineCollection
 from matplotlib.patheffects import withStroke
-from matplotlib.patches import Patch, Circle, Rectangle
+from matplotlib.patches import Patch, FancyBboxPatch, Circle, Rectangle
 from heapq import heappush, heappop
 
 # Add this line to switch to a non-interactive backend
@@ -1655,34 +1655,28 @@ def generate_and_save_frame(
 
         ax.set_axis_off()
 
-        # Improved progress bar
+        # Improved progress bar using FancyBboxPatch
         progress = current_step / total_steps
-        progress_height = 0.04  # Increased height
-        progress_y = -0.14  # Adjusted position
-
-        # Progress bar background
         ax.add_patch(
-            Rectangle(
-                (0.1, progress_y),
-                0.8,
-                progress_height,
-                facecolor="#1E1E1E",
-                edgecolor="white",
-                alpha=0.7,
+            FancyBboxPatch(
+                (0.05, -0.15),
+                width=0.9,
+                height=0.04,
+                boxstyle="round,pad=0.02",
+                facecolor="#3E3E3E",
+                edgecolor="none",
                 transform=ax.transAxes,
                 zorder=20,
             )
         )
-
-        # Progress bar fill
         ax.add_patch(
-            Rectangle(
-                (0.1, progress_y),
-                0.8 * progress,
-                progress_height,
+            FancyBboxPatch(
+                (0.05, -0.15),
+                width=0.9 * progress,
+                height=0.04,
+                boxstyle="round,pad=0.02",
                 facecolor="#4CAF50",
                 edgecolor="none",
-                alpha=0.8,
                 transform=ax.transAxes,
                 zorder=21,
             )
@@ -1691,7 +1685,7 @@ def generate_and_save_frame(
         # Progress text
         ax.text(
             0.5,
-            progress_y - 0.04,
+            -0.2,
             f"Progress: {current_step}/{total_steps} ({progress:.1%})",
             ha="center",
             va="center",
