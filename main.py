@@ -1987,8 +1987,9 @@ async def run_complex_examples(
         if not all_paths:
             print("No valid paths found. Skipping this animation.")
             continue
+        slowdown_factor = 5  # Corresponds to the slowdown_factor in `generate_and_save_frame``
         max_frames = max(
-            len(exploration_order) + len(path)
+            len(exploration_order) + len(path) * slowdown_factor
             for exploration_order, path in zip(all_exploration_orders, all_paths)
         )
         print(f"Max frames: {max_frames}")
@@ -2329,7 +2330,7 @@ if __name__ == "__main__":
         print(f"Overall test result: {'Passed' if test_result else 'Failed'}")
 
     num_animations = 1  # Set this to the desired number of animations to generate
-    GRID_SIZE = 121  # Resolution of the maze grid
+    GRID_SIZE = 31  # Resolution of the maze grid
     num_problems = 3  # Number of mazes to show side by side in each animation
     DPI = 150  # DPI for the animation
     FPS = 4  # FPS for the animation
