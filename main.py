@@ -918,15 +918,35 @@ def create_fourier_maze(width, height):
 
 
 @nb.jit(nopython=True)
+def convolve2d_numba(A, kernel):
+    h, w = A.shape
+    kh, kw = kernel.shape
+    padh, padw = kh // 2, kw // 2
+
+    result = np.zeros_like(A)
+
+    for i in range(h):
+        for j in range(w):
+            for ki in range(kh):
+                for kj in range(kw):
+                    ii = (i - padh + ki) % h
+                    jj = (j - padw + kj) % w
+                    result[i, j] += A[ii, jj] * kernel[ki, kj]
+
+    return result
+
+
+@nb.jit(nopython=True)
 def reaction_diffusion_step(A, B, DA, DB, f, k, laplacian_kernel):
-    A_lap = convolve2d(A, laplacian_kernel, mode="same", boundary="wrap")
-    B_lap = convolve2d(B, laplacian_kernel, mode="same", boundary="wrap")
+    A_lap = convolve2d_numba(A, laplacian_kernel)
+    B_lap = convolve2d_numba(B, laplacian_kernel)
     A += DA * A_lap - A * B**2 + f * (1 - A)
     B += DB * B_lap + A * B**2 - (k + f) * B
     return np.clip(A, 0, 1), np.clip(B, 0, 1)
 
 
-def create_reaction_diffusion_maze(width, height):
+@nb.jit(nopython=True)
+def create_reaction_diffusion_maze_core(width, height, num_iterations):
     A = np.random.rand(height, width)
     B = np.random.rand(height, width)
 
@@ -935,8 +955,14 @@ def create_reaction_diffusion_maze(width, height):
     DA, DB = 0.16, 0.08
     f, k = 0.035, 0.065
 
-    for _ in range(20):
+    for _ in range(num_iterations):
         A, B = reaction_diffusion_step(A, B, DA, DB, f, k, laplacian_kernel)
+
+    return A
+
+
+def create_reaction_diffusion_maze(width, height):
+    A = create_reaction_diffusion_maze_core(width, height, 20)
 
     maze = (A - A.min()) / (A.max() - A.min())
     maze = (maze > np.random.uniform(0.4, 0.6)).astype(np.int32)
@@ -1787,7 +1813,6 @@ async def run_complex_examples(
         cores_to_spare = 8
         num_cores = max([1, os.cpu_count() - cores_to_spare])
         print(f"Using {num_cores} cores for frame generation")
-
     frame_generator = partial(
         generate_and_save_frame,
         all_mazes=all_mazes,
