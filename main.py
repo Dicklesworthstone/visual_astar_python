@@ -29,7 +29,7 @@ from matplotlib.animation import FuncAnimation, FFMpegWriter
 from matplotlib.lines import Line2D
 from matplotlib.collections import LineCollection
 from matplotlib.patheffects import withStroke
-from matplotlib.patches import Patch, Circle
+from matplotlib.patches import Patch, Circle, Rectangle
 from heapq import heappush, heappop
 
 # Add this line to switch to a non-interactive backend
