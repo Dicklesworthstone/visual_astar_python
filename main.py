@@ -5,6 +5,7 @@ import gc
 import os
 import asyncio
 import shutil
+import warnings
 from asyncio import to_thread
 from datetime import datetime
 import concurrent.futures
@@ -27,10 +28,11 @@ from matplotlib import font_manager
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.animation import FuncAnimation, FFMpegWriter
 from matplotlib.lines import Line2D
-from matplotlib.collections import LineCollection
 from matplotlib.patheffects import withStroke
-from matplotlib.patches import Patch, FancyBboxPatch, Circle, Rectangle
+from matplotlib.patches import Patch, Circle, Rectangle
 from heapq import heappush, heappop
+
+warnings.filterwarnings("ignore", message=".*tight_layout.*")
 
 # Add this line to switch to a non-interactive backend
 plt.switch_backend("Agg")
@@ -1563,10 +1565,10 @@ def generate_and_save_frame(
     title_color = plt.cm.viridis(0.5 + 0.2 * np.sin(frame * 0.1))
     title = fig.suptitle(
         "2D Maze Pathfinding Visualization",
-        fontsize=20,
+        fontsize=22,
         fontweight="bold",
         color=title_color,
-        y=0.98,
+        y=0.97,
     )
     title.set_path_effects([withStroke(linewidth=3, foreground="black")])
 
@@ -1990,10 +1992,10 @@ async def run_complex_examples(
         )
         print(f"Max frames: {max_frames}")
         max_frames = max(1, max_frames)
-        num_cores = max(1, os.cpu_count() - 8)  # Leave 8 cores for system processes
+        num_cores = max(1, os.cpu_count() - 5)  # Leave 5 cores for system processes
         max_concurrent_tasks = min(
-            num_cores, 8
-        )  # Limit to 8 concurrent tasks or number of cores, whichever is smaller
+            num_cores, 16
+        )  # Limit to 16 concurrent tasks or number of cores, whichever is smaller
         semaphore = Semaphore(max_concurrent_tasks)
         print(
             f"Using {num_cores} cores for frame generation and a semaphore with {max_concurrent_tasks} permits."
@@ -2328,7 +2330,7 @@ if __name__ == "__main__":
     num_animations = 1  # Set this to the desired number of animations to generate
     GRID_SIZE = 91  # Resolution of the maze grid
     num_problems = 3  # Number of mazes to show side by side in each animation
-    DPI = 400  # DPI for the animation
+    DPI = 450  # DPI for the animation
     FPS = 4  # FPS for the animation
     save_as_frames_only = 1  # Set this to 1 to save frames as individual images in a generated sub-folder; 0 to save as a single video as well
     dark_mode = 0  # Change the theme of the maze visualization
