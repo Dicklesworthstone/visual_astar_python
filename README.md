@@ -211,14 +211,21 @@ If you have saved the frames as individual image files and wish to manually asse
 
 #### Prerequisites
 
-Ensure FFmpeg is installed on your system. You can download it from the [official FFmpeg website](https://ffmpeg.org/download.html) or install it via a package manager.
+Ensure FFmpeg is installed on your system. You can download it from the [official FFmpeg website](https://ffmpeg.org/download.html) or install it via a package manager, or you can download a pre-compiled binary from the most recent version [here](https://johnvansickle.com/ffmpeg/).
 
 #### Command Example
 
-Assuming your frames are named sequentially (e.g., `frame_0001.png`, `frame_0002.png`, etc.) and stored in a folder called `output_frames`, you can use the following command:
+Assuming your frames are named sequentially (e.g., `frame_0001.png`, `frame_0002.png`, etc.) and stored in a folder called `output_frames`, you can use the following command to generate a 30 second video file using x265:
 
 ```bash
-ffmpeg -framerate 60 -i output_frames/frame_%04d.png -c:v libx264 -crf 23 -preset medium -pix_fmt yuv420p output_video.mp4
+sudo apt install bc # Install the bc command if you don't have it
+ffmpeg -framerate $(echo "($(find . -maxdepth 1 -type f -name 'frame_*.png' | wc -l) + 30 - 1) / 30" | bc) -i frame_%04d.png -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2,scale=3840:2160" -c:v libx265 -preset slow -crf 28 -pix_fmt yuv420p -x265-params "pools=16:bframes=8:ref=4:no-open-gop=1:me=star:rd=4:aq-mode=3:aq-strength=1.0" -movflags +faststart output.mp4
+```
+
+If you want to use x264 instead, try:
+
+```bash
+ffmpeg -framerate $(bc -l <<< "$(find . -maxdepth 1 -type f -name 'frame_*.png' | wc -l) / 30") -i frame_%04d.png -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" -c:v libx264 -crf 18 -pix_fmt yuv420p -threads 16 -movflags +faststart output_x264.mp4
 ```
 
 #### Explanation of Options
