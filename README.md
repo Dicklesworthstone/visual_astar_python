@@ -169,12 +169,6 @@ This process ensures that each maze not only provides a challenging and engaging
     - **Purpose**: To generate a maze using one of the specified algorithms and ensure it meets all criteria for quality and functionality.
     - **Mechanism**: This function integrates the entire process of maze generation, validation, and adjustment. It starts with generating a maze, runs validation checks, and applies modifications as needed. If the maze does not meet the criteria, the function can regenerate or further adjust it until all requirements are satisfied.
 
-### Approach and Philosophy
-
-The philosophy behind these validation and modification techniques is to balance between challenging maze complexity and ensuring solvability. The ultimate goal is to create mazes that are not only aesthetically diverse but also functionally engaging for pathfinding. By using a combination of algorithms and heuristic techniques, the system ensures each maze offers a unique experience, with carefully controlled difficulty levels and a guarantee of a solution.
-
-This comprehensive approach allows for the creation of mazes that are structurally sound and enjoyable to navigate, supporting various applications from entertainment (like games) to practical scenarios (like robotics and AI pathfinding training). The emphasis is on adaptability, ensuring the framework can handle a wide range of maze styles and complexities.
-
 ## Visualization
 
 The visualization component in this project is designed to provide a comprehensive and interactive display of both the maze generation process and the pathfinding algorithms at work. This component uses the `matplotlib` library to create detailed visual representations that highlight the complexities and intricacies of maze structures and pathfinding strategies. Key elements of the visualization include:
@@ -374,7 +368,7 @@ A\* is widely used in various domains due to its reliability and efficiency:
 
 ### Advanced Implementation Features
 
-This project's implementation of A\* goes beyond standard features, incorporating advanced techniques to enhance performance and versatility:
+This project's implementation of A\* goes beyond standard features, incorporating advanced techniques to enhance performance and versatility. Most of the credit for these goes to Andrew Kravchuck, who wrote the Lisp implementation this is based on: 
 
 1. **Smart Organization**: The algorithm uses a priority queue to manage paths, ensuring that the most promising paths are explored first. This efficient data structure reduces the time spent evaluating less optimal paths.
 
@@ -389,8 +383,6 @@ This project's implementation of A\* goes beyond standard features, incorporatin
 6. **Robust Error Handling**: The algorithm gracefully manages exceptional situations, such as encountering impassable regions or unsolvable configurations, providing clear feedback to users.
 
 7. **Optimized Data Structures**: The use of bit fields for coordinate encoding enhances memory efficiency and processing speed, crucial for handling large-scale environments or high-resolution grids.
-
-This detailed implementation not only highlights A\*'s theoretical strengths but also showcases practical enhancements that make it a powerful tool for modern pathfinding and navigation challenges. Whether in gaming, robotics, or complex AI systems, A\* remains a go-to algorithm for its unmatched balance of efficiency and accuracy.
 
 ## Dependencies
 
