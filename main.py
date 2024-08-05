@@ -1563,7 +1563,7 @@ def generate_and_save_frame(
     fig.patch.set_facecolor("#1E1E1E")
 
     # Main title
-    title_color = plt.cm.viridis(0.5 + 0.2 * np.sin(frame * 0.0001))
+    title_color = plt.cm.viridis(0.5 + 0.2 * np.sin(frame * 0.001))
     title = fig.suptitle(
         "2D Maze Pathfinding Visualization",
         fontsize=22,
@@ -1623,7 +1623,7 @@ def generate_and_save_frame(
                 colors = plt.cm.viridis(np.linspace(0, 1, len(points)))
 
                 # Pulsating effect
-                pulse = 0.5 + 0.5 * np.sin(frame * 0.0001)
+                pulse = 0.5 + 0.5 * np.sin(frame * 0.001)
                 linewidths = 2 + 2 * pulse
 
                 # Plot the path
@@ -1640,7 +1640,7 @@ def generate_and_save_frame(
                 # Keep the final path visible with pulsating effect
                 final_path = np.array(all_paths[i])
                 colors = plt.cm.viridis(np.linspace(0, 1, len(final_path)))
-                pulse = 0.5 + 0.5 * np.sin(frame * 0.0001)
+                pulse = 0.5 + 0.5 * np.sin(frame * 0.001)
                 linewidths = 2 + 2 * pulse
                 for j in range(len(final_path) - 1):
                     ax.plot(
