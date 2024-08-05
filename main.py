@@ -1117,9 +1117,10 @@ def add_walls(maze, target_percentage):
     target_wall_count = int(total_cells * target_percentage)
 
     print(
-        "Adding walls. Initial count: {}, Target count: {}".format(
-            initial_wall_count, target_wall_count
-        )
+        "Adding walls. Initial count: "
+        + str(initial_wall_count)
+        + ", Target count: "
+        + str(target_wall_count)
     )
 
     while np.sum(maze) < target_wall_count:
@@ -1128,7 +1129,7 @@ def add_walls(maze, target_percentage):
             maze[y, x] = 1
 
     final_wall_count = np.sum(maze)
-    print("Walls added. Final count: {}".format(final_wall_count))
+    print("Walls added. Final count: " + str(final_wall_count))
     return maze
 
 
@@ -1140,9 +1141,10 @@ def remove_walls(maze, target_percentage):
     target_wall_count = int(total_cells * target_percentage)
 
     print(
-        "Removing walls. Initial count: {}, Target count: {}".format(
-            initial_wall_count, target_wall_count
-        )
+        "Removing walls. Initial count: "
+        + str(initial_wall_count)
+        + ", Target count: "
+        + str(target_wall_count)
     )
 
     while np.sum(maze) > target_wall_count:
@@ -1151,7 +1153,7 @@ def remove_walls(maze, target_percentage):
             maze[y, x] = 0
 
     final_wall_count = np.sum(maze)
-    print("Walls removed. Final count: {}".format(final_wall_count))
+    print("Walls removed. Final count: " + str(final_wall_count))
     return maze
 
 
