@@ -8,8 +8,6 @@ This project provides a high-performance implementation of the A\* ("A-Star") pa
 - **Diverse Maze Generation**: Multiple algorithms for creating complex and varied mazes, including Diffusion-Limited Aggregation (DLA), Game of Life, One-Dimensional Automata, Langton's Ant, Voronoi Diagrams, Fractal Division, Wave Function Collapse, Growing Tree, Terrain-Based, Musicalized, Quantum-Inspired, Artistic, Cellular Automaton, Fourier-Based, and Reaction-Diffusion.
 - **Advanced Visualization**: Detailed visual representation of maze generation and pathfinding, including animation of exploration and path discovery.
 
-![A\* Visualized in Python!](https://raw.githubusercontent.com/Dicklesworthstone/visual_astar_python/main/illustration.webp)
-
 <div align="center">
   <a href="https://www.youtube.com/watch?v=iA6XJRE6CTM">
     <img src="https://img.youtube.com/vi/iA6XJRE6CTM/0.jpg" alt="Demo of it in Action">
