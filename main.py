@@ -1,13 +1,15 @@
 import math
 import random
 import time
+import gc
 import os
 import asyncio
 import shutil
 from asyncio import to_thread
 from datetime import datetime
 import concurrent.futures
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from threading import Semaphore
 from functools import partial
 import numpy as np
 import numba as nb
@@ -22,7 +24,7 @@ from scipy.signal import convolve2d
 from skimage.morphology import thin, disk
 from PIL import Image
 import requests
-import tqdm
+from tqdm import tqdm 
 from matplotlib import font_manager
 from heapq import heappush, heappop
 
@@ -1115,7 +1117,7 @@ def add_walls(maze, target_percentage):
     target_wall_count = int(total_cells * target_percentage)
 
     print(
-        f"Adding walls. Initial count: {initial_wall_count}, Target count: {target_wall_count}"
+        f"Adding walls. Initial count: {initial_wall_count:,}, Target count: {target_wall_count:,}"
     )
 
     while np.sum(maze) < target_wall_count:
@@ -1136,7 +1138,7 @@ def remove_walls(maze, target_percentage):
     target_wall_count = int(total_cells * target_percentage)
 
     print(
-        f"Removing walls. Initial count: {initial_wall_count}, Target count: {target_wall_count}"
+        f"Removing walls. Initial count: {initial_wall_count:,}, Target count: {target_wall_count:,}"
     )
 
     while np.sum(maze) > target_wall_count:
@@ -1377,7 +1379,7 @@ def validate_and_adjust_maze(maze, maze_generation_approach):
     wall_count = np.sum(maze)
     wall_percentage = wall_count / total_cells
 
-    print(f"Initial wall count: {wall_count}")
+    print(f"Initial wall count: {wall_count:,}")
     print(f"Initial wall percentage: {wall_percentage:.2f}")
 
     labeled_areas, num_areas = label(1 - maze)
@@ -1481,7 +1483,6 @@ def prepare_maze_rgba(maze, wall_color_rgba, floor_color_rgba):
     return maze_rgba
 
 
-@nb.jit
 def delete_small_files(folder, size_limit_kb=20):
     one_hour_ago = time.time() - 3600
     for filename in os.listdir(folder):
@@ -1496,7 +1497,6 @@ def delete_small_files(folder, size_limit_kb=20):
                 )
 
 
-@nb.jit
 def remove_old_empty_directories(base_folder="maze_animations", age_limit_hours=1):
     if not os.path.exists(base_folder):
         return
@@ -1598,7 +1598,7 @@ def generate_and_save_frame(
 
     frame_filename = os.path.join(output_folder, f"frame_{frame:04d}.{frame_format}")
     plt.savefig(frame_filename)
-    plt.close(fig)
+    plt.close(fig)  # Close the figure after saving
     return frame_filename
 
 
@@ -1805,8 +1805,10 @@ async def run_complex_examples(
         print(f"Max frames: {max_frames}")
 
         max_frames = max(1, max_frames)
-        num_cores = max([1, os.cpu_count() - 4])
-        print(f"Using {num_cores} cores for frame generation")
+        num_cores = max([1, os.cpu_count() - 8])
+        max_concurrent_tasks = min(num_cores, 48)  # Limit to 48 concurrent tasks or number of cores, whichever is smaller
+        semaphore = Semaphore(max_concurrent_tasks) # Create a semaphore to limit concurrent tasks         
+        print(f"Using {num_cores} cores for frame generation and a semaphore with {max_concurrent_tasks} permits.")
 
         frame_generator = partial(
             generate_and_save_frame,
@@ -1828,18 +1830,17 @@ async def run_complex_examples(
             frame_format=frame_format,
         )
 
-        # Generate and save frames concurrently
-        with ProcessPoolExecutor(
-            max_workers=num_cores, initializer=set_nice
-        ) as executor:
-            list(
-                tqdm(
-                    executor.map(frame_generator, range(max_frames)),
-                    total=max_frames,
-                    desc="Generating frames",
-                )
-            )
+        def frame_generator_with_semaphore(frame):
+            with semaphore:
+                return frame_generator(frame)
 
+        # Generate and save frames concurrently
+        with ProcessPoolExecutor(max_workers=num_cores, initializer=set_nice) as executor:
+            futures = [executor.submit(frame_generator_with_semaphore, frame) for frame in range(max_frames)]
+            for i, _ in enumerate(tqdm(as_completed(futures), total=max_frames, desc="Generating frames")):
+                if i % 100 == 0:  # Every 100 frames
+                    gc.collect()  # Force garbage collection
+                            
         # If saving as a video, compile the saved frames
         if not save_as_frames_only:
             fig, axs = plt.subplots(1, num_problems, figsize=(20, 8), dpi=DPI)
