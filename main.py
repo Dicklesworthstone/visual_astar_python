@@ -1556,7 +1556,7 @@ def generate_and_save_frame(
     output_folder,
     frame_format,
 ):
-    fig = plt.figure(figsize=(24, 14), dpi=DPI)  # Increased height
+    fig = plt.figure(figsize=(24, 13), dpi=DPI)  # Slightly increased height
     fig.patch.set_facecolor("#1E1E1E")  # Dark background for contrast
 
     # Main title
@@ -1618,16 +1618,6 @@ def generate_and_save_frame(
                     segments, colors=path_color, linewidths=3, alpha=0.8
                 )
                 ax.add_collection(lc)
-            else:
-                # Final path animation with pulsating effect
-                final_path = all_paths[i]
-                points = np.array(final_path).reshape(-1, 1, 2)
-                segments = np.concatenate([points[:-1], points[1:]], axis=1)
-                pulse = 0.5 + 0.5 * np.sin(frame * 0.2)  # Pulsating effect
-                lc = LineCollection(
-                    segments, colors=path_color, linewidths=3 + 2 * pulse, alpha=0.8
-                )
-                ax.add_collection(lc)
             current_step = min(frame, total_steps)
 
         start_x, start_y = all_starts[i]
@@ -1665,63 +1655,50 @@ def generate_and_save_frame(
 
         ax.set_axis_off()
 
-        # Add progress bar with gradient
+        # Improved progress bar
         progress = current_step / total_steps
-        progress_height = 0.03
-        progress_y = -0.15
+        progress_height = 0.04  # Increased height
+        progress_y = -0.14  # Adjusted position
 
-        # Create gradient for progress bar
-        gradient = np.linspace(0, 1, 256).reshape(1, -1)
-        gradient = np.vstack((gradient, gradient))
-        gradient_colors = plt.cm.Greens(gradient)
-
-        # Add gradient to progress bar
-        ax.imshow(
-            gradient_colors,
-            extent=[0.1, 0.9, progress_y, progress_y + progress_height],
-            aspect="auto",
-            zorder=20,
-            alpha=0.8,
-            transform=ax.transAxes,
+        # Progress bar background
+        ax.add_patch(
+            Rectangle(
+                (0.1, progress_y),
+                0.8,
+                progress_height,
+                facecolor="#1E1E1E",
+                edgecolor="white",
+                alpha=0.7,
+                transform=ax.transAxes,
+                zorder=20,
+            )
         )
 
-        # Add progress bar outline
-        rect = plt.Rectangle(
-            (0.1, progress_y),
-            0.8,
-            progress_height,
-            facecolor="none",
-            edgecolor="white",
-            alpha=0.7,
-            transform=ax.transAxes,
-            zorder=21,
+        # Progress bar fill
+        ax.add_patch(
+            Rectangle(
+                (0.1, progress_y),
+                0.8 * progress,
+                progress_height,
+                facecolor="#4CAF50",
+                edgecolor="none",
+                alpha=0.8,
+                transform=ax.transAxes,
+                zorder=21,
+            )
         )
-        ax.add_patch(rect)
 
-        # Add progress fill
-        rect_fill = plt.Rectangle(
-            (0.1, progress_y),
-            0.8 * progress,
-            progress_height,
-            facecolor="none",
-            edgecolor="white",
-            alpha=0.5,
-            transform=ax.transAxes,
-            zorder=22,
-        )
-        ax.add_patch(rect_fill)
-
-        # Add progress text
+        # Progress text
         ax.text(
             0.5,
-            progress_y - 0.05,
+            progress_y - 0.04,
             f"Progress: {current_step}/{total_steps} ({progress:.1%})",
             ha="center",
             va="center",
             color="white",
             fontsize=10,
             transform=ax.transAxes,
-            zorder=23,
+            zorder=22,
         )
 
     # Create a layout for the legend and info text
