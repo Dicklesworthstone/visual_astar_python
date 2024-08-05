@@ -1558,6 +1558,7 @@ def generate_and_save_frame(
     output_folder,
     frame_format,
 ):
+    slowdown_factor=5  # Slows down animation to illustrate solution path
     fig = plt.figure(figsize=(24, 14), dpi=DPI)
     fig.patch.set_facecolor("#1E1E1E")
 
@@ -1601,7 +1602,7 @@ def generate_and_save_frame(
 
         exploration_length = len(all_exploration_orders[i])
         path_length = len(all_paths[i])
-        total_steps = exploration_length + path_length
+        total_steps = exploration_length + path_length * slowdown_factor
 
         if frame < exploration_length:
             exploration_map = prepare_exploration_map(
@@ -1610,7 +1611,7 @@ def generate_and_save_frame(
             ax.imshow(exploration_map, cmap=exploration_cmap, alpha=0.7)
             current_step = frame
         else:
-            path_frame = frame - exploration_length
+            path_frame = (frame - exploration_length) // slowdown_factor
             current_step = min(frame, total_steps)
 
             # Animated path tracing with gradient and pulsating effect
@@ -2327,10 +2328,10 @@ if __name__ == "__main__":
         test_result = test_a_star_implementations(num_tests=20, grid_size=231)
         print(f"Overall test result: {'Passed' if test_result else 'Failed'}")
 
-    num_animations = 5  # Set this to the desired number of animations to generate
-    GRID_SIZE = 121  # Resolution of the maze grid
+    num_animations = 1  # Set this to the desired number of animations to generate
+    GRID_SIZE = 51  # Resolution of the maze grid
     num_problems = 3  # Number of mazes to show side by side in each animation
-    DPI = 450  # DPI for the animation
+    DPI = 90  # DPI for the animation
     FPS = 4  # FPS for the animation
     save_as_frames_only = 1  # Set this to 1 to save frames as individual images in a generated sub-folder; 0 to save as a single video as well
     dark_mode = 0  # Change the theme of the maze visualization
