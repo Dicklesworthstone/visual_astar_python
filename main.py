@@ -29,8 +29,7 @@ from matplotlib.animation import FuncAnimation, FFMpegWriter
 from matplotlib.lines import Line2D
 from matplotlib.collections import LineCollection
 from matplotlib.patheffects import withStroke
-from matplotlib.patches import Patch, Circle, FancyBboxPatch
-from matplotlib.lines import Line2D
+from matplotlib.patches import Patch, Circle
 from heapq import heappush, heappop
 
 # Add this line to switch to a non-interactive backend
@@ -1557,7 +1556,7 @@ def generate_and_save_frame(
     output_folder,
     frame_format,
 ):
-    fig = plt.figure(figsize=(24, 16), dpi=DPI)  # Increased figure height
+    fig = plt.figure(figsize=(24, 14), dpi=DPI)  # Increased height
     fig.patch.set_facecolor("#1E1E1E")  # Dark background for contrast
 
     # Main title
@@ -1620,7 +1619,7 @@ def generate_and_save_frame(
                 )
                 ax.add_collection(lc)
             else:
-                # Final path animation
+                # Final path animation with pulsating effect
                 final_path = all_paths[i]
                 points = np.array(final_path).reshape(-1, 1, 2)
                 segments = np.concatenate([points[:-1], points[1:]], axis=1)
@@ -1666,15 +1665,15 @@ def generate_and_save_frame(
 
         ax.set_axis_off()
 
-        # Add progress bar
+        # Add progress bar with gradient
         progress = current_step / total_steps
-        progress_height = 0.05  # Increased height for visibility
-        progress_y = -0.18  # Adjusted position
+        progress_height = 0.03
+        progress_y = -0.15
 
         # Create gradient for progress bar
         gradient = np.linspace(0, 1, 256).reshape(1, -1)
         gradient = np.vstack((gradient, gradient))
-        gradient_colors = plt.cm.Greens(gradient)  # Use a green colormap
+        gradient_colors = plt.cm.Greens(gradient)
 
         # Add gradient to progress bar
         ax.imshow(
@@ -1726,7 +1725,7 @@ def generate_and_save_frame(
         )
 
     # Create a layout for the legend and info text
-    gs_info = fig.add_gridspec(1, 2, left=0.05, right=0.95, top=0.15, bottom=0.05)
+    gs_info = fig.add_gridspec(1, 2, left=0.05, right=0.95, top=0.15, bottom=0.02)
 
     # Add general information with a modern look
     info_ax = fig.add_subplot(gs_info[0])
