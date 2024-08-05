@@ -228,6 +228,7 @@ sudo apt install bc
 Assuming your frames are named sequentially (e.g., `frame_0001.png`, `frame_0002.png`, etc.) and stored in the current directory, you can use the following command to generate a 30-second video file using x265:
 
 ```bash
+cd /home/ubuntu/visual_astar_python/maze_animations/animation_20240805_114757/ # Change to the directory containing the frames-- this is just an example
 ffmpeg -framerate $(echo "($(find . -maxdepth 1 -type f -name 'frame_*.png' | wc -l) + 30 - 1) / 30" | bc) -i frame_%04d.png -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2,scale=3840:2160" -c:v libx265 -preset slow -crf 28 -pix_fmt yuv420p -x265-params "pools=16:bframes=8:ref=4:no-open-gop=1:me=star:rd=4:aq-mode=3:aq-strength=1.0" -movflags +faststart output.mp4
 ```
 
@@ -267,6 +268,34 @@ python -m pip install --upgrade pip
 python -m pip install wheel
 python -m pip install --upgrade setuptools wheel
 pip install -r requirements.txt
+```
+
+The code is tested with Python 3.12. If you want to use that version without messing with your system Python version, then on Ubuntu you can install and use PyEnv like so:
+
+```bash
+if ! command -v pyenv &> /dev/null; then
+    sudo apt-get update
+    sudo apt-get install -y build-essential libssl-dev zlib1g-dev libbz2-dev \
+    libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev \
+    xz-utils tk-dev libffi-dev liblzma-dev python3-openssl git
+
+    git clone https://github.com/pyenv/pyenv.git ~/.pyenv
+    echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.zshrc
+    echo 'export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.zshrc
+    echo 'eval "$(pyenv init --path)"' >> ~/.zshrc
+    source ~/.zshrc
+fi
+cd ~/.pyenv && git pull && cd -
+pyenv install 3.12
+cd visual_astar_python
+pyenv local 3.12
+python -m venv venv
+source venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install wheel
+python -m pip install --upgrade setuptools wheel
+pip install -r requirements.txt
+
 ```
 
 ### Generating and Visualizing Mazes
