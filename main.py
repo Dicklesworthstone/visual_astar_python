@@ -1803,7 +1803,6 @@ async def run_complex_examples(
         if not all_paths:
             print("No valid paths found. Skipping this animation.")
             continue
-
         max_frames = max(
             len(exploration_order) + len(path)
             for exploration_order, path in zip(all_exploration_orders, all_paths)
@@ -1811,13 +1810,11 @@ async def run_complex_examples(
         print(f"Max frames: {max_frames}")
 
         max_frames = max(1, max_frames)
-        num_cores = max([1, os.cpu_count() - 8])
+        num_cores = max(1, os.cpu_count() - 2)  # Leave 2 cores for system processes
         max_concurrent_tasks = min(
-            num_cores, 48
-        )  # Limit to 48 concurrent tasks or number of cores, whichever is smaller
-        semaphore = Semaphore(
-            max_concurrent_tasks
-        )  # Create a semaphore to limit concurrent tasks
+            num_cores, 16
+        )  # Limit to 16 concurrent tasks or number of cores, whichever is smaller
+        semaphore = Semaphore(max_concurrent_tasks)
         print(
             f"Using {num_cores} cores for frame generation and a semaphore with {max_concurrent_tasks} permits."
         )
@@ -1842,24 +1839,26 @@ async def run_complex_examples(
             frame_format=frame_format,
         )
 
-        def frame_generator_with_semaphore(frame):
-            with semaphore:
-                return frame_generator(frame)
+        async def frame_generator_with_semaphore(frame):
+            async with semaphore:
+                return await asyncio.to_thread(frame_generator, frame)
 
         # Generate and save frames concurrently
-        with ProcessPoolExecutor(
-            max_workers=num_cores, initializer=set_nice
-        ) as executor:
-            futures = [
-                executor.submit(frame_generator_with_semaphore, frame)
-                for frame in range(max_frames)
-            ]
-            for i, _ in enumerate(
-                tqdm(as_completed(futures), total=max_frames, desc="Generating frames")
-            ):
-                if i % 100 == 0:  # Every 100 frames
-                    gc.collect()  # Force garbage collection
+        tasks = [frame_generator_with_semaphore(frame) for frame in range(max_frames)]
 
+        for i, task in enumerate(
+            tqdm(
+                asyncio.as_completed(tasks), total=max_frames, desc="Generating frames"
+            )
+        ):
+            try:
+                frame_filename = await task
+                print(f"Generated frame {i+1}/{max_frames}: {frame_filename}")
+            except Exception as e:
+                print(f"Error generating frame {i+1}: {str(e)}")
+
+            if (i + 1) % 100 == 0:  # Every 100 frames
+                gc.collect()  # Force garbage collection
         # If saving as a video, compile the saved frames
         if not save_as_frames_only:
             fig, axs = plt.subplots(1, num_problems, figsize=(20, 8), dpi=DPI)
@@ -2152,6 +2151,7 @@ if __name__ == "__main__":
             DPI,
             FPS,
             save_as_frames_only,
-            dark_mode,
+            frame_format="png",
+            dark_mode=dark_mode,
         )
     )
