@@ -13,9 +13,6 @@ from asyncio import Semaphore
 from functools import partial
 import numpy as np
 import numba as nb
-import matplotlib.pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap
-from matplotlib.animation import FuncAnimation, FFMpegWriter
 from scipy.spatial import Voronoi
 from skimage.morphology import skeletonize, binary_erosion
 from noise import snoise2
@@ -25,7 +22,15 @@ from skimage.morphology import thin, disk
 from PIL import Image
 import requests
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 from matplotlib import font_manager
+from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.animation import FuncAnimation, FFMpegWriter
+from matplotlib.collections import LineCollection
+from matplotlib.patheffects import withStroke
+from matplotlib.patches import Patch, FancyBboxPatch, Circle
+from matplotlib.lines import Line2D
+from mpl_toolkits.mplot3d import Axes3D, art3d  # noqa: F401
 from heapq import heappush, heappop
 
 # Add this line to switch to a non-interactive backend
@@ -1551,10 +1556,12 @@ def generate_and_save_frame(
     DPI,
     output_folder,
     frame_format,
+    use_3d_mode=False,
 ):
-    fig, axs = plt.subplots(1, len(all_mazes), figsize=(20, 8), dpi=DPI)
-    if len(all_mazes) == 1:
-        axs = [axs]
+    fig = plt.figure(figsize=(24, 12), dpi=DPI)
+    fig.patch.set_facecolor("#1E1E1E")  # Dark background for contrast
+
+    gs = fig.add_gridspec(2, len(all_mazes), height_ratios=[4, 1])
 
     wall_color_rgba = (
         np.array(
@@ -1571,11 +1578,21 @@ def generate_and_save_frame(
         / 255
     )
 
-    for i, ax in enumerate(axs):
-        ax.clear()
+    for i in range(len(all_mazes)):
+        if use_3d_mode:
+            ax_main = fig.add_subplot(gs[0, i], projection="3d")
+        else:
+            ax_main = fig.add_subplot(gs[0, i])
+        ax_stats = fig.add_subplot(gs[1, i])
+
         maze = all_mazes[i]
         maze_rgba = prepare_maze_rgba(maze, wall_color_rgba, floor_color_rgba)
-        ax.imshow(maze_rgba)
+
+        if use_3d_mode:
+            x, y = np.meshgrid(range(GRID_SIZE), range(GRID_SIZE))
+            ax_main.plot_surface(x, y, maze, facecolors=maze_rgba, shade=False)
+        else:
+            ax_main.imshow(maze_rgba)
 
         exploration_length = len(all_exploration_orders[i])
         path_length = len(all_paths[i])
@@ -1584,27 +1601,173 @@ def generate_and_save_frame(
             exploration_map = prepare_exploration_map(
                 all_exploration_orders[i], frame, GRID_SIZE
             )
-            ax.imshow(exploration_map, cmap=exploration_cmap, alpha=0.5)
+            if use_3d_mode:
+                exploration_heights = exploration_map * 0.5  # Scale for visibility
+                ax_main.plot_surface(
+                    x, y, exploration_heights, cmap=exploration_cmap, alpha=0.7
+                )
+            else:
+                ax_main.imshow(exploration_map, cmap=exploration_cmap, alpha=0.7)
         else:
             path_frame = frame - exploration_length
             if path_frame < path_length:
                 path_segment = all_paths[i][: path_frame + 1]
-                path_x, path_y = zip(*path_segment)
-                ax.plot(path_x, path_y, color=path_color, linewidth=2, alpha=0.8)
+                if use_3d_mode:
+                    ax_main.plot(
+                        *zip(*path_segment),
+                        [0.5] * len(path_segment),
+                        color=path_color,
+                        linewidth=3,
+                        alpha=0.8,
+                    )
+                else:
+                    # Use LineCollection for efficient 2D path plotting
+                    points = np.array(path_segment).reshape(-1, 1, 2)
+                    segments = np.concatenate([points[:-1], points[1:]], axis=1)
+                    lc = LineCollection(
+                        segments, colors=path_color, linewidths=3, alpha=0.8
+                    )
+                    ax_main.add_collection(lc)
 
         start_x, start_y = all_starts[i]
         goal_x, goal_y = all_goals[i]
-        ax.plot(start_x, start_y, "o", color=start_color, markersize=10, label="Start")
-        ax.plot(goal_x, goal_y, "o", color=goal_color, markersize=10, label="Goal")
-        ax.set_title(f"Example {i+1}: {all_maze_approaches[i]}")
-        ax.axis("off")
 
-    plt.tight_layout()
-    fig.canvas.draw()
+        # Animated markers for start and goal using Circle patches
+        start_circle = Circle(
+            (start_x, start_y),
+            0.5,
+            color=start_color,
+            alpha=0.7 + 0.3 * np.sin(frame * 0.2),
+        )
+        goal_star = Line2D(
+            [goal_x],
+            [goal_y],
+            marker="*",
+            color=goal_color,
+            markersize=15,
+            markeredgecolor="white",
+        )
+
+        if use_3d_mode:
+            ax_main.add_patch(start_circle)
+            ax_main.add_line(goal_star)
+            art3d.pathpatch_2d_to_3d(start_circle, z=0.5, zdir="z")
+        else:
+            ax_main.add_patch(start_circle)
+            ax_main.add_line(goal_star)
+
+        # Apply stroke effect to the title for better visibility
+        title = ax_main.set_title(
+            f"{all_maze_approaches[i].replace('_', ' ').title()}",
+            color="white",
+            fontsize=14,
+            fontweight="bold",
+        )
+        title.set_path_effects([withStroke(linewidth=3, foreground="black")])
+
+        ax_main.set_axis_off()
+
+        # Stats and progress visualization
+        ax_stats.set_facecolor("#2E2E2E")
+        ax_stats.set_axis_off()
+
+        progress = frame / max(exploration_length, path_length)
+        ax_stats.add_patch(
+            FancyBboxPatch(
+                (0.05, 0.2),
+                width=0.9,
+                height=0.3,
+                boxstyle="round,pad=0.02",
+                facecolor="#3E3E3E",
+                edgecolor="none",
+            )
+        )
+        ax_stats.add_patch(
+            FancyBboxPatch(
+                (0.05, 0.2),
+                width=0.9 * progress,
+                height=0.3,
+                boxstyle="round,pad=0.02",
+                facecolor="#4CAF50",
+                edgecolor="none",
+            )
+        )
+
+        if frame < exploration_length:
+            status_text = f"Exploring: {frame}/{exploration_length}"
+        else:
+            status_text = f"Path found: {path_frame}/{path_length}"
+
+        ax_stats.text(
+            0.5,
+            0.8,
+            status_text,
+            color="white",
+            fontsize=12,
+            ha="center",
+            va="center",
+            fontweight="bold",
+        )
+        ax_stats.text(
+            0.5,
+            0.35,
+            f"{progress:.1%}",
+            color="white",
+            fontsize=14,
+            ha="center",
+            va="center",
+            fontweight="bold",
+        )
+
+    # Add a pulsating main title with stroke effect
+    title_color = plt.cm.viridis(0.5 + 0.2 * np.sin(frame * 0.1))
+    title = fig.suptitle(
+        f"{'3D' if use_3d_mode else '2D'} Maze Pathfinding Visualization",
+        fontsize=20,
+        fontweight="bold",
+        color=title_color,
+        y=0.98,
+    )
+    title.set_path_effects([withStroke(linewidth=3, foreground="black")])
+
+    # Add some general information with a modern look
+    info_text = f"Frame: {frame} | Grid Size: {GRID_SIZE}x{GRID_SIZE}"
+    fig.text(
+        0.5,
+        0.02,
+        info_text,
+        ha="center",
+        fontsize=10,
+        color="white",
+        bbox=dict(
+            facecolor="#3E3E3E", edgecolor="none", alpha=0.7, pad=5, boxstyle="round"
+        ),
+    )
+
+    # Add a legend
+    legend_elements = [
+        Line2D([0], [0], color=path_color, lw=2, label="Path"),
+        Patch(facecolor=start_color, edgecolor="none", label="Start"),
+        Line2D([0], [0], marker="*", color=goal_color, label="Goal", linestyle="None"),
+        Patch(
+            facecolor=exploration_cmap(0.5),
+            edgecolor="none",
+            label="Exploration",
+            alpha=0.5,
+        ),
+    ]
+    fig.legend(
+        handles=legend_elements,
+        loc="lower right",
+        bbox_to_anchor=(0.95, 0.05),
+        fontsize=10,
+    )
+
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
     frame_filename = os.path.join(output_folder, f"frame_{frame:04d}.{frame_format}")
-    plt.savefig(frame_filename)
-    plt.close(fig)  # Close the figure after saving
+    plt.savefig(frame_filename, facecolor=fig.get_facecolor(), edgecolor="none")
+    plt.close(fig)
     return frame_filename
 
 
@@ -1621,6 +1784,7 @@ async def run_complex_examples(
     save_as_frames_only=False,
     frame_format="png",
     dark_mode=False,
+    use_3d_mode=False,
     override_maze_approach=None,
 ):
     if dark_mode:
@@ -1808,7 +1972,6 @@ async def run_complex_examples(
             for exploration_order, path in zip(all_exploration_orders, all_paths)
         )
         print(f"Max frames: {max_frames}")
-
         max_frames = max(1, max_frames)
         num_cores = max(1, os.cpu_count() - 2)  # Leave 2 cores for system processes
         max_concurrent_tasks = min(
@@ -1837,6 +2000,7 @@ async def run_complex_examples(
             DPI=DPI,
             output_folder=output_folder,
             frame_format=frame_format,
+            use_3d_mode=use_3d_mode,  # Add this line
         )
 
         async def process_frame(executor, frame):
@@ -2146,12 +2310,13 @@ if __name__ == "__main__":
         print(f"Overall test result: {'Passed' if test_result else 'Failed'}")
 
     num_animations = 1  # Set this to the desired number of animations to generate
-    GRID_SIZE = 191  # Resolution of the maze grid
+    GRID_SIZE = 91  # Resolution of the maze grid
     num_problems = 3  # Number of mazes to show side by side in each animation
-    DPI = 500  # DPI for the animation
+    DPI = 400  # DPI for the animation
     FPS = 4  # FPS for the animation
     save_as_frames_only = 1  # Set this to 1 to save frames as individual images in a generated sub-folder; 0 to save as a single video as well
     dark_mode = 0  # Change the theme of the maze visualization
+    use_3d_mode = 1  # Set this to 1 to use 3D visualization mode
     asyncio.run(
         run_complex_examples(
             num_animations,
@@ -2162,5 +2327,6 @@ if __name__ == "__main__":
             save_as_frames_only,
             frame_format="png",
             dark_mode=dark_mode,
+            use_3d_mode=use_3d_mode,
         )
     )

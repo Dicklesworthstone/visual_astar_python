@@ -355,7 +355,6 @@ The implementation of A\* in this project goes beyond the basics, making it not 
 - FFmpeg (for video encoding)
 - Requests (for downloading custom fonts)
 
-
 ## License
 
 This project is licensed under the MIT License. See the `LICENSE` file for details.
