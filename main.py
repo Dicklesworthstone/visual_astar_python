@@ -1562,7 +1562,7 @@ def generate_and_save_frame(
     fig.patch.set_facecolor("#1E1E1E")
 
     # Main title
-    title_color = plt.cm.viridis(0.5 + 0.2 * np.sin(frame * 0.1))
+    title_color = plt.cm.viridis(0.5 + 0.2 * np.sin(frame * 0.0001))
     title = fig.suptitle(
         "2D Maze Pathfinding Visualization",
         fontsize=22,
@@ -2327,8 +2327,8 @@ if __name__ == "__main__":
         test_result = test_a_star_implementations(num_tests=20, grid_size=231)
         print(f"Overall test result: {'Passed' if test_result else 'Failed'}")
 
-    num_animations = 1  # Set this to the desired number of animations to generate
-    GRID_SIZE = 91  # Resolution of the maze grid
+    num_animations = 5  # Set this to the desired number of animations to generate
+    GRID_SIZE = 121  # Resolution of the maze grid
     num_problems = 3  # Number of mazes to show side by side in each animation
     DPI = 450  # DPI for the animation
     FPS = 4  # FPS for the animation
