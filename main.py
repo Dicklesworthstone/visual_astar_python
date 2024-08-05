@@ -1849,24 +1849,24 @@ async def run_complex_examples(
         with ProcessPoolExecutor(max_workers=num_cores) as executor:
             tasks = [process_frame(executor, frame) for frame in range(max_frames)]
 
-            for i, task in enumerate(
-                tqdm(
-                    asyncio.as_completed(tasks),
-                    total=max_frames,
-                    desc="Generating frames",
-                ),
-                start=1,
-            ):
+            pbar = tqdm(
+                asyncio.as_completed(tasks), total=max_frames, desc="Generating frames"
+            )
+            for i, task in enumerate(pbar, start=1):
                 try:
                     frame_filename = await task
-                    print(f"Generated frame {i}/{max_frames}: {frame_filename}")
+                    pbar.set_description(f"Generated frame {i}/{max_frames}")
+                    pbar.set_postfix(
+                        {"Current file": frame_filename.split("/")[-1]}, refresh=True
+                    )
                 except Exception as e:
-                    print(f"Error generating frame {i}: {str(e)}")
+                    pbar.set_description(f"Error in frame {i}/{max_frames}")
+                    pbar.set_postfix({"Error": str(e)}, refresh=True)
 
                 if i % 100 == 0:  # Every 100 frames
                     gc.collect()  # Force garbage collection
 
-        print("\nFrame generation complete.")
+                print("\nFrame generation complete.")
 
         # If saving as a video, compile the saved frames
         if not save_as_frames_only:
