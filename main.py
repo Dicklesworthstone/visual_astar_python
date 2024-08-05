@@ -1434,19 +1434,6 @@ def generate_solvable_maze(
 
 
 @nb.jit(nopython=True)
-def prepare_maze_rgba(maze, wall_color_rgba, floor_color_rgba):
-    height, width = maze.shape
-    maze_rgba = np.zeros((height, width, 4), dtype=np.float32)
-    for y in range(height):
-        for x in range(width):
-            if maze[y, x] == 1:
-                maze_rgba[y, x] = wall_color_rgba
-            else:
-                maze_rgba[y, x] = floor_color_rgba
-    return maze_rgba
-
-
-@nb.jit(nopython=True)
 def prepare_exploration_map(exploration_order, frame, GRID_SIZE):
     exploration_map = np.zeros((GRID_SIZE, GRID_SIZE), dtype=np.float32)
     for idx, (x, y) in enumerate(exploration_order[:frame]):
@@ -1469,7 +1456,53 @@ def prepare_maze_rgba(maze, wall_color_rgba, floor_color_rgba):
     return maze_rgba
 
 
-def generate_and_save_frame(
+@nb.jit
+def delete_small_files(folder, size_limit_kb=20):
+    one_hour_ago = time.time() - 3600
+    for filename in os.listdir(folder):
+        filepath = os.path.join(folder, filename)
+        if os.path.isfile(filepath):
+            file_size = os.path.getsize(filepath)
+            last_modified_time = os.path.getmtime(filepath)
+            if file_size < size_limit_kb * 1024 and last_modified_time < one_hour_ago:
+                os.remove(filepath)
+                print(
+                    f"Deleted {filename} because it is smaller than {size_limit_kb}KB and was last modified over an hour ago."
+                )
+
+
+@nb.jit
+def remove_old_empty_directories(base_folder="maze_animations", age_limit_hours=1):
+    if not os.path.exists(base_folder):
+        return
+
+    current_time = time.time()
+    age_limit_seconds = age_limit_hours * 3600
+
+    for dir_name in os.listdir(base_folder):
+        dir_path = os.path.join(base_folder, dir_name)
+        if os.path.isdir(dir_path):
+            if not os.listdir(dir_path):
+                last_modified_time = os.path.getmtime(dir_path)
+                if (current_time - last_modified_time) > age_limit_seconds:
+                    try:
+                        shutil.rmtree(dir_path)
+                        print(f"Removed empty and old directory: {dir_path}")
+                    except OSError as e:
+                        print(f"Error removing directory {dir_path}: {e}")
+
+
+def create_output_folder(base_folder="maze_animations"):
+    os.makedirs(base_folder, exist_ok=True)
+    now = datetime.now()
+    date_time = now.strftime("%Y%m%d_%H%M%S")
+    animation_folder_name = f"animation_{date_time}"
+    output_folder = os.path.join(base_folder, animation_folder_name)
+    os.makedirs(output_folder, exist_ok=True)
+    return output_folder
+
+
+async def generate_and_save_frame(
     frame,
     all_mazes,
     all_exploration_orders,
@@ -1539,60 +1572,17 @@ def generate_and_save_frame(
     fig.canvas.draw()
 
     frame_filename = os.path.join(output_folder, f"frame_{frame:04d}.{frame_format}")
-    plt.savefig(frame_filename)
+    await asyncio.to_thread(plt.savefig, frame_filename)
     plt.close(fig)
+
+    # Add a brief sleep to yield control back to the system
+    await asyncio.sleep(0.01)  # Adjust the duration as needed
 
     return frame_filename
 
 
-@nb.jit
-def delete_small_files(folder, size_limit_kb=20):
-    one_hour_ago = time.time() - 3600
-    for filename in os.listdir(folder):
-        filepath = os.path.join(folder, filename)
-        if os.path.isfile(filepath):
-            file_size = os.path.getsize(filepath)
-            last_modified_time = os.path.getmtime(filepath)
-            if file_size < size_limit_kb * 1024 and last_modified_time < one_hour_ago:
-                os.remove(filepath)
-                print(
-                    f"Deleted {filename} because it is smaller than {size_limit_kb}KB and was last modified over an hour ago."
-                )
-
-
-@nb.jit
-def remove_old_empty_directories(base_folder="maze_animations", age_limit_hours=1):
-    if not os.path.exists(base_folder):
-        return
-
-    current_time = time.time()
-    age_limit_seconds = age_limit_hours * 3600
-
-    for dir_name in os.listdir(base_folder):
-        dir_path = os.path.join(base_folder, dir_name)
-        if os.path.isdir(dir_path):
-            if not os.listdir(dir_path):
-                last_modified_time = os.path.getmtime(dir_path)
-                if (current_time - last_modified_time) > age_limit_seconds:
-                    try:
-                        shutil.rmtree(dir_path)
-                        print(f"Removed empty and old directory: {dir_path}")
-                    except OSError as e:
-                        print(f"Error removing directory {dir_path}: {e}")
-
-
 async def save_animation_async(anim, filepath, writer, DPI):
     await to_thread(anim.save, filepath, writer=writer, dpi=DPI)
-
-
-def create_output_folder(base_folder="maze_animations"):
-    os.makedirs(base_folder, exist_ok=True)
-    now = datetime.now()
-    date_time = now.strftime("%Y%m%d_%H%M%S")
-    animation_folder_name = f"animation_{date_time}"
-    output_folder = os.path.join(base_folder, animation_folder_name)
-    os.makedirs(output_folder, exist_ok=True)
-    return output_folder
 
 
 async def run_complex_examples(
@@ -1603,17 +1593,32 @@ async def run_complex_examples(
     FPS=60,
     save_as_frames_only=False,
     frame_format="png",
+    dark_mode=False,
     override_maze_approach=None,
 ):
-    wall_color = "#2C3E50"
-    floor_color = "#ECF0F1"
-    start_color = "#27AE60"
-    goal_color = "#E74C3C"
-    path_color = "#3498DB"
-    exploration_colors = ["#FFF9C4", "#FFE082", "#FFB74D", "#FF8A65", "#E57373"]
+    if dark_mode:
+        wall_color = "#ECF0F1"  # Light pastel for walls
+        floor_color = "#2C3E50"  # Dark gray for background
+        start_color = "#1ABC9C"  # Cool pastel cyan for start
+        goal_color = "#E74C3C"  # Pastel red for goal
+        path_color = "#9B59B6"  # Cool pastel purple for path
+    else:
+        wall_color = "#2C3E50"  # Default dark wall color
+        floor_color = "#ECF0F1"  # Default light floor color
+        start_color = "#27AE60"  # Default green for start
+        goal_color = "#E74C3C"  # Default red for goal
+        path_color = "#3498DB"  # Default blue for path
+    exploration_colors = [
+        "#FFF9C4",
+        "#FFE082",
+        "#FFB74D",
+        "#FF8A65",
+        "#E57373",
+    ]  # Warm colors
     exploration_cmap = LinearSegmentedColormap.from_list(
         "exploration", exploration_colors, N=100
     )
+
     maze_generation_approaches = [
         "dla",
         "random_game_of_life",
@@ -1779,7 +1784,8 @@ async def run_complex_examples(
         print(f"Max frames: {max_frames}")
 
         max_frames = max(1, max_frames)
-        num_cores = max([1, os.cpu_count() - 4])
+        cores_to_spare = 8
+        num_cores = max([1, os.cpu_count() - cores_to_spare])
         print(f"Using {num_cores} cores for frame generation")
 
         frame_generator = partial(
@@ -1803,15 +1809,16 @@ async def run_complex_examples(
         )
 
         # Generate and save frames concurrently
-        with ProcessPoolExecutor(
+        async with ProcessPoolExecutor(
             max_workers=num_cores, initializer=set_nice
         ) as executor:
-            list(
-                tqdm(
-                    executor.map(frame_generator, range(max_frames)),
-                    total=max_frames,
-                    desc="Generating frames",
-                )
+            await asyncio.gather(
+                *[
+                    asyncio.create_task(frame_generator(frame))
+                    for frame in tqdm(
+                        range(max_frames), total=max_frames, desc="Generating frames"
+                    )
+                ]
             )
 
         # If saving as a video, compile the saved frames
@@ -2096,8 +2103,15 @@ if __name__ == "__main__":
     DPI = 400  # DPI for the animation
     FPS = 5  # FPS for the animation
     save_as_frames_only = 1  # Set this to 1 to save frames as individual images in a generated sub-folder; 0 to save as a single video as well
+    dark_mode = 1  # Change the theme of the maze visualization
     asyncio.run(
         run_complex_examples(
-            num_animations, GRID_SIZE, num_problems, DPI, FPS, save_as_frames_only
+            num_animations,
+            GRID_SIZE,
+            num_problems,
+            DPI,
+            FPS,
+            save_as_frames_only,
+            dark_mode,
         )
     )
