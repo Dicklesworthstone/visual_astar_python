@@ -1556,8 +1556,8 @@ def generate_and_save_frame(
     output_folder,
     frame_format,
 ):
-    fig = plt.figure(figsize=(24, 13), dpi=DPI)  # Slightly increased height
-    fig.patch.set_facecolor("#1E1E1E")  # Dark background for contrast
+    fig = plt.figure(figsize=(24, 14), dpi=DPI)
+    fig.patch.set_facecolor("#1E1E1E")
 
     # Main title
     title_color = plt.cm.viridis(0.5 + 0.2 * np.sin(frame * 0.1))
@@ -1570,7 +1570,6 @@ def generate_and_save_frame(
     )
     title.set_path_effects([withStroke(linewidth=3, foreground="black")])
 
-    # Create layout for mazes
     gs_mazes = fig.add_gridspec(
         1, len(all_mazes), left=0.05, right=0.95, top=0.9, bottom=0.2
     )
@@ -1610,15 +1609,45 @@ def generate_and_save_frame(
             current_step = frame
         else:
             path_frame = frame - exploration_length
+            current_step = min(frame, total_steps)
+
+            # Animated path tracing with gradient and pulsating effect
             if path_frame < path_length:
                 path_segment = all_paths[i][: path_frame + 1]
-                points = np.array(path_segment).reshape(-1, 1, 2)
-                segments = np.concatenate([points[:-1], points[1:]], axis=1)
-                lc = LineCollection(
-                    segments, colors=path_color, linewidths=3, alpha=0.8
-                )
-                ax.add_collection(lc)
-            current_step = min(frame, total_steps)
+                points = np.array(path_segment)
+
+                # Create gradient colors for the path
+                colors = plt.cm.viridis(np.linspace(0, 1, len(points)))
+
+                # Pulsating effect
+                pulse = 0.5 + 0.5 * np.sin(frame * 0.2)
+                linewidths = 2 + 2 * pulse
+
+                # Plot the path
+                for j in range(len(points) - 1):
+                    ax.plot(
+                        points[j : j + 2, 0],
+                        points[j : j + 2, 1],
+                        color=colors[j],
+                        linewidth=linewidths,
+                        alpha=0.8,
+                        zorder=5,
+                    )
+            elif path_frame >= path_length:
+                # Keep the final path visible with pulsating effect
+                final_path = np.array(all_paths[i])
+                colors = plt.cm.viridis(np.linspace(0, 1, len(final_path)))
+                pulse = 0.5 + 0.5 * np.sin(frame * 0.2)
+                linewidths = 2 + 2 * pulse
+                for j in range(len(final_path) - 1):
+                    ax.plot(
+                        final_path[j : j + 2, 0],
+                        final_path[j : j + 2, 1],
+                        color=colors[j],
+                        linewidth=linewidths,
+                        alpha=0.8,
+                        zorder=5,
+                    )
 
         start_x, start_y = all_starts[i]
         goal_x, goal_y = all_goals[i]
@@ -1655,30 +1684,30 @@ def generate_and_save_frame(
 
         ax.set_axis_off()
 
-        # Improved progress bar using FancyBboxPatch
+        # Progress bar
         progress = current_step / total_steps
         ax.add_patch(
-            FancyBboxPatch(
+            Rectangle(
                 (0.05, -0.15),
-                width=0.9,
-                height=0.04,
-                boxstyle="round,pad=0.02",
+                0.9,
+                0.04,
                 facecolor="#3E3E3E",
                 edgecolor="none",
                 transform=ax.transAxes,
                 zorder=20,
+                clip_on=False,
             )
         )
         ax.add_patch(
-            FancyBboxPatch(
+            Rectangle(
                 (0.05, -0.15),
-                width=0.9 * progress,
-                height=0.04,
-                boxstyle="round,pad=0.02",
+                0.9 * progress,
+                0.04,
                 facecolor="#4CAF50",
                 edgecolor="none",
                 transform=ax.transAxes,
                 zorder=21,
+                clip_on=False,
             )
         )
 
@@ -1693,6 +1722,7 @@ def generate_and_save_frame(
             fontsize=10,
             transform=ax.transAxes,
             zorder=22,
+            clip_on=False,
         )
 
     # Create a layout for the legend and info text
@@ -1746,8 +1776,7 @@ def generate_and_save_frame(
         labelcolor="white",
     )
 
-    # Adjust the layout
-    fig.subplots_adjust(wspace=0.3, hspace=0.3)
+    plt.tight_layout(rect=[0, 0.05, 1, 0.95])
 
     frame_filename = os.path.join(output_folder, f"frame_{frame:04d}.{frame_format}")
     plt.savefig(
