@@ -28,7 +28,7 @@ from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.animation import FuncAnimation, FFMpegWriter
 from matplotlib.collections import LineCollection
 from matplotlib.patheffects import withStroke
-from matplotlib.patches import Patch, Circle
+from matplotlib.patches import Patch, Circle, FancyBboxPatch
 from matplotlib.lines import Line2D
 from heapq import heappush, heappop
 
@@ -1572,7 +1572,7 @@ def generate_and_save_frame(
 
     # Create layout for mazes
     gs_mazes = fig.add_gridspec(
-        1, len(all_mazes), left=0.05, right=0.95, top=0.9, bottom=0.15
+        1, len(all_mazes), left=0.05, right=0.95, top=0.9, bottom=0.2
     )
 
     wall_color_rgba = (
@@ -1600,12 +1600,14 @@ def generate_and_save_frame(
 
         exploration_length = len(all_exploration_orders[i])
         path_length = len(all_paths[i])
+        total_steps = exploration_length + path_length
 
         if frame < exploration_length:
             exploration_map = prepare_exploration_map(
                 all_exploration_orders[i], frame, GRID_SIZE
             )
             ax.imshow(exploration_map, cmap=exploration_cmap, alpha=0.7)
+            current_step = frame
         else:
             path_frame = frame - exploration_length
             if path_frame < path_length:
@@ -1616,6 +1618,7 @@ def generate_and_save_frame(
                     segments, colors=path_color, linewidths=3, alpha=0.8
                 )
                 ax.add_collection(lc)
+            current_step = min(frame, total_steps)
 
         start_x, start_y = all_starts[i]
         goal_x, goal_y = all_goals[i]
@@ -1652,8 +1655,46 @@ def generate_and_save_frame(
 
         ax.set_axis_off()
 
+        # Add progress bar
+        progress = current_step / total_steps
+        progress_bar = FancyBboxPatch(
+            (0.1, -0.12),
+            width=0.8,
+            height=0.02,
+            boxstyle="round,pad=0.01",
+            facecolor="none",
+            edgecolor="white",
+            alpha=0.7,
+            transform=ax.transAxes,
+        )
+        ax.add_patch(progress_bar)
+
+        progress_fill = FancyBboxPatch(
+            (0.1, -0.12),
+            width=0.8 * progress,
+            height=0.02,
+            boxstyle="round,pad=0.01",
+            facecolor="#4CAF50",
+            edgecolor="none",
+            alpha=0.8,
+            transform=ax.transAxes,
+        )
+        ax.add_patch(progress_fill)
+
+        # Add progress text
+        ax.text(
+            0.5,
+            -0.18,
+            f"Progress: {current_step}/{total_steps} ({progress:.1%})",
+            ha="center",
+            va="center",
+            color="white",
+            fontsize=10,
+            transform=ax.transAxes,
+        )
+
     # Create a layout for the legend and info text
-    gs_info = fig.add_gridspec(1, 2, left=0.05, right=0.95, top=0.1, bottom=0.02)
+    gs_info = fig.add_gridspec(1, 2, left=0.05, right=0.95, top=0.15, bottom=0.02)
 
     # Add general information with a modern look
     info_ax = fig.add_subplot(gs_info[0])
