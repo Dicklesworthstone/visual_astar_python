@@ -30,7 +30,6 @@ from matplotlib.collections import LineCollection
 from matplotlib.patheffects import withStroke
 from matplotlib.patches import Patch, Circle
 from matplotlib.lines import Line2D
-from mpl_toolkits.mplot3d import Axes3D, art3d  # noqa: F401
 from heapq import heappush, heappop
 
 # Add this line to switch to a non-interactive backend
@@ -1556,7 +1555,6 @@ def generate_and_save_frame(
     DPI,
     output_folder,
     frame_format,
-    use_3d_mode=True,
 ):
     fig = plt.figure(figsize=(24, 12), dpi=DPI)
     fig.patch.set_facecolor("#1E1E1E")  # Dark background for contrast
@@ -1579,43 +1577,12 @@ def generate_and_save_frame(
     )
 
     for i in range(len(all_mazes)):
-        ax = fig.add_subplot(gs[i], projection="3d")
-        ax.set_facecolor("#1E1E1E")
+        ax = fig.add_subplot(gs[i])
 
         maze = all_mazes[i]
-        x, y = np.meshgrid(range(GRID_SIZE), range(GRID_SIZE))
+        maze_rgba = prepare_maze_rgba(maze, wall_color_rgba, floor_color_rgba)
 
-        if use_3d_mode:
-            # Create a 3D representation of the maze
-            z = np.zeros_like(maze)
-            dx = dy = 0.8  # Slightly smaller than 1 to create gaps between cells
-            dz = 0.5  # Height of the walls
-
-            # Plot floor
-            ax.plot_surface(
-                x,
-                y,
-                z,
-                facecolors=np.tile(floor_color_rgba, (GRID_SIZE, GRID_SIZE, 1)),
-                shade=False,
-            )
-
-            # Plot walls
-            for ii in range(GRID_SIZE):
-                for jj in range(GRID_SIZE):
-                    if maze[ii, jj] == 1:
-                        xx, yy = np.meshgrid([jj, jj + dx], [ii, ii + dy])
-                        ax.plot_surface(
-                            xx,
-                            yy,
-                            np.ones_like(xx) * dz,
-                            facecolors=np.tile(wall_color_rgba, (2, 2, 1)),
-                            shade=False,
-                        )
-
-            # Set view angle
-            ax.view_init(elev=45, azim=45)
-            ax.set_box_aspect((1, 1, 0.3))  # Adjust the z-axis scale
+        ax.imshow(maze_rgba)
 
         exploration_length = len(all_exploration_orders[i])
         path_length = len(all_paths[i])
@@ -1624,59 +1591,43 @@ def generate_and_save_frame(
             exploration_map = prepare_exploration_map(
                 all_exploration_orders[i], frame, GRID_SIZE
             )
-            explored_positions = np.array(all_exploration_orders[i][:frame])
-            ax.scatter(
-                explored_positions[:, 0],
-                explored_positions[:, 1],
-                explored_positions[:, 1] * 0 + 0.1,  # Slightly above the floor
-                c=exploration_map[explored_positions[:, 1], explored_positions[:, 0]],
-                cmap=exploration_cmap,
-                s=50,
-                alpha=0.7,
-            )
+            ax.imshow(exploration_map, cmap=exploration_cmap, alpha=0.7)
         else:
             path_frame = frame - exploration_length
             if path_frame < path_length:
-                path_segment = np.array(all_paths[i][: path_frame + 1])
-                ax.plot(
-                    path_segment[:, 0],
-                    path_segment[:, 1],
-                    path_segment[:, 1] * 0 + 0.1,
-                    color=path_color,
-                    linewidth=3,
-                    alpha=0.8,
+                path_segment = all_paths[i][: path_frame + 1]
+                points = np.array(path_segment).reshape(-1, 1, 2)
+                segments = np.concatenate([points[:-1], points[1:]], axis=1)
+                lc = LineCollection(
+                    segments, colors=path_color, linewidths=3, alpha=0.8
                 )
+                ax.add_collection(lc)
 
         start_x, start_y = all_starts[i]
         goal_x, goal_y = all_goals[i]
 
-        # Animated markers for start and goal
-        ax.scatter(
-            [start_x],
-            [start_y],
-            [0.25],
+        # Larger and more prominent start and goal markers
+        start_circle = Circle(
+            (start_x, start_y),
+            0.8,
             color=start_color,
-            s=300,
             alpha=0.9 + 0.1 * np.sin(frame * 0.2),
             zorder=10,
         )
-        ax.scatter(
+        goal_star = Line2D(
             [goal_x],
             [goal_y],
-            [0.25],
-            color=goal_color,
-            s=300,
             marker="*",
-            alpha=0.9 + 0.1 * np.sin(frame * 0.2),
+            color=goal_color,
+            markersize=20,
+            markeredgecolor="white",
+            markeredgewidth=1.5,
             zorder=10,
         )
 
-        # Remove axis ticks and labels
-        ax.set_xticks([])
-        ax.set_yticks([])
-        ax.set_zticks([])
+        ax.add_patch(start_circle)
+        ax.add_line(goal_star)
 
-        # Add a title for each maze
         title = ax.set_title(
             f"{all_maze_approaches[i].replace('_', ' ').title()}",
             color="white",
@@ -1685,12 +1636,15 @@ def generate_and_save_frame(
         )
         title.set_path_effects([withStroke(linewidth=3, foreground="black")])
 
-    # Add a main title with stroke effect
+        ax.set_axis_off()
+
+    # Add a pulsating main title with stroke effect
+    title_color = plt.cm.viridis(0.5 + 0.1 * np.sin(frame * 0.1))
     title = fig.suptitle(
-        "3D Maze Pathfinding Visualization",
+        "2D Maze Pathfinding Visualization",
         fontsize=20,
         fontweight="bold",
-        color="white",
+        color=title_color,
         y=0.98,
     )
     title.set_path_effects([withStroke(linewidth=3, foreground="black")])
@@ -1711,7 +1665,11 @@ def generate_and_save_frame(
         fontsize=10,
         color="white",
         bbox=dict(
-            facecolor="#3E3E3E", edgecolor="none", alpha=0.7, pad=3, boxstyle="round"
+            facecolor="#3E3E3E",
+            edgecolor="none",
+            alpha=0.7,
+            pad=3,
+            boxstyle="round",
         ),
     )
 
@@ -1720,15 +1678,7 @@ def generate_and_save_frame(
     legend_ax.axis("off")
     legend_elements = [
         Line2D([0], [0], color=path_color, lw=2, label="Path"),
-        Line2D(
-            [0],
-            [0],
-            marker="o",
-            color=start_color,
-            label="Start",
-            linestyle="None",
-            markersize=10,
-        ),
+        Patch(facecolor=start_color, edgecolor="none", label="Start"),
         Line2D(
             [0],
             [0],
@@ -1775,7 +1725,6 @@ async def run_complex_examples(
     save_as_frames_only=False,
     frame_format="png",
     dark_mode=False,
-    use_3d_mode=False,
     override_maze_approach=None,
 ):
     if dark_mode:
@@ -1991,7 +1940,6 @@ async def run_complex_examples(
             DPI=DPI,
             output_folder=output_folder,
             frame_format=frame_format,
-            use_3d_mode=use_3d_mode,  # Add this line
         )
 
         async def process_frame(executor, frame):
@@ -2307,7 +2255,6 @@ if __name__ == "__main__":
     FPS = 4  # FPS for the animation
     save_as_frames_only = 1  # Set this to 1 to save frames as individual images in a generated sub-folder; 0 to save as a single video as well
     dark_mode = 0  # Change the theme of the maze visualization
-    use_3d_mode = 0  # Set this to 1 to use 3D visualization mode
     asyncio.run(
         run_complex_examples(
             num_animations,
@@ -2318,6 +2265,5 @@ if __name__ == "__main__":
             save_as_frames_only,
             frame_format="png",
             dark_mode=dark_mode,
-            use_3d_mode=use_3d_mode,
         )
     )
