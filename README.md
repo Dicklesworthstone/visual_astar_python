@@ -277,6 +277,8 @@ if ! command -v pyenv &> /dev/null; then
 fi
 cd ~/.pyenv && git pull && cd -
 pyenv install 3.12
+cd ~
+git clone https://github.com/Dicklesworthstone/visual_astar_python.git
 cd visual_astar_python
 pyenv local 3.12
 python -m venv venv
