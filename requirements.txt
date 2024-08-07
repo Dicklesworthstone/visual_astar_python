@@ -1,10 +1,11 @@
+ffmpeg
 matplotlib
+noise
+numba
 numpy
+Pillow 
+requests
+ruff
 scikit-image
 scipy
-ffmpeg
-ruff
-noise
-requests
-numba
 tqdm

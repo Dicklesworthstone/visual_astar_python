@@ -31,7 +31,7 @@ from matplotlib.lines import Line2D
 from matplotlib.patheffects import withStroke
 from matplotlib.patches import Patch, Circle, Rectangle
 from heapq import heappush, heappop
-
+from PIL import Image
 warnings.filterwarnings("ignore", message=".*tight_layout.*")
 
 # Add this line to switch to a non-interactive backend
@@ -983,6 +983,28 @@ def create_reaction_diffusion_maze(width, height):
     return maze
 
 
+def make_maze_based_on_custom_map_image(width, height):
+    # Hardcoded path to the custom map image
+    image_path = "path/to/your/custom_map_image.png"
+    # Load the image and convert it to grayscale
+    img = Image.open(image_path).convert('L')
+    # Convert the image to a numpy array
+    img_array = np.array(img)
+    # Threshold the image to create a binary maze
+    # You can adjust the threshold value (128) to fine-tune the maze generation
+    binary_maze = (img_array > 128).astype(np.uint8) * 255
+    # Convert back to an image for resizing
+    binary_img = Image.fromarray(binary_maze, mode='L')
+    # Resize the binary image to match the desired maze dimensions
+    # Use nearest neighbor interpolation to preserve sharp edges
+    resized_img = binary_img.resize((width, height), Image.NEAREST)
+    # Convert the resized image back to a numpy array and create the final maze
+    maze = (np.array(resized_img) > 128).astype(np.int32)
+    # Ensure the border is all walls
+    maze[0, :] = maze[-1, :] = maze[:, 0] = maze[:, -1] = 1
+    return maze
+
+
 def create_better_maze(width, height, maze_generation_approach):
     if maze_generation_approach == "dla":
         return create_dla_maze(width, height)
@@ -1016,6 +1038,8 @@ def create_better_maze(width, height, maze_generation_approach):
         return create_fourier_maze(width, height)
     elif maze_generation_approach == "reaction_diffusion":
         return create_reaction_diffusion_maze(width, height)
+    elif maze_generation_approach == "custom_map_image":
+        return make_maze_based_on_custom_map_image(width, height)    
     else:
         raise ValueError(
             f"Unknown maze generation approach: {maze_generation_approach}"
